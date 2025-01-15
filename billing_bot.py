@@ -16,7 +16,7 @@ load_dotenv()
 # Set the billing date
 billing_year = '2025'
 billing_month = '01'
-billing_day = '13'
+billing_day = '07'
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -24,8 +24,9 @@ standard_appointment_length = 5
 # counseling_appointment_length is 20 minutes
 counseling_appointment_length = 20
 
-# set the time delay to 5 seconds
-delay = 5
+# set delay times in seconds
+short_delay = 3
+long_delay = 5
 
 # Set the number of runs
 runs = 4
@@ -45,7 +46,7 @@ def login_to_oscar(driver):
     pin = driver.find_element(By.ID, "pin")
     pin.send_keys(os.getenv("PIN"))
     pin.send_keys(Keys.RETURN)
-    time.sleep(delay)
+    time.sleep(short_delay)
 
 def navigate_to_billing_date(driver):
     billing_date = f"https://well-kerrisdale.kai-oscar.com/oscar/provider/providercontrol.jsp?year={billing_year}&month={billing_month}&day={billing_day}&view=0&displaymode=day&dboperation=searchappointmentday&viewall=0"
@@ -57,9 +58,7 @@ def get_appointments(driver):
 def process_appointment(driver, appointment, day_sheet_window):
     global cumulative_end_time
     global counseling_appointment_count
-
     # print(f"Processing appointment: {appointment.text}")
-
     appointment_status = appointment.find_element(By.XPATH, ".//img[1]").get_attribute("title")
     # print(f"Appointment status: {appointment_status}")
 
@@ -87,14 +86,14 @@ def process_appointment(driver, appointment, day_sheet_window):
         print(f"Adjusted start time: {current_start_time.strftime('%H:%M')}")
 
     e_chart.click()
-    time.sleep(delay)
+    time.sleep(long_delay)
     encounter = driver.window_handles[1]
     driver.switch_to.window(encounter)
     print("Switched to encounter window")
 
     show_all_notes = driver.find_element(By.XPATH, "//*[text()='Show All Notes']")
     show_all_notes.click()
-    time.sleep(delay)
+    time.sleep(short_delay)
     print("Clicked Show All Notes button")
 
     all_notes = driver.window_handles[2]
@@ -110,7 +109,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         diagnosis = "No diagnosis found"
 
     def extract_diagnostic_code(diagnosis):
-        match = re.search(r'ICD-?9: (\d+\.\d)\d?', diagnosis)
+        match = re.search(r'ICD-?9: (\d+\.?\d)\d?', diagnosis)
         return match.group(1) if match else None
 
     icd9_code = extract_diagnostic_code(diagnosis)
@@ -136,7 +135,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     print("Switched back to day_sheet_window")
 
     billing_button.click()
-    time.sleep(delay)
+    time.sleep(short_delay)
     billing_window = driver.window_handles[1]
     driver.switch_to.window(billing_window)
     print("Switched to billing_window")
@@ -166,7 +165,7 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     continue_button = driver.find_element(By.XPATH, "//*[@value='Continue']")
     continue_button.click()
-    time.sleep(delay)
+    time.sleep(short_delay)
     print("Clicked continue button")
 
     save_bill = driver.find_element(By.XPATH, "//*[@value='Save Bill']")
@@ -175,10 +174,10 @@ def process_appointment(driver, appointment, day_sheet_window):
         print("Clicked save bill button")
     else:
         print("Safe mode is on. Not saving the bill.")
-        time.sleep(delay * 99)
+        time.sleep(999)
 
     driver.switch_to.window(day_sheet_window)
-    time.sleep(delay)
+    time.sleep(short_delay)
     print("Switched back to day_sheet_window after saving the bill")
 
 def process_appointments(driver, day_sheet_window):
