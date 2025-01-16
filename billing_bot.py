@@ -16,7 +16,7 @@ load_dotenv()
 # Set the billing date
 billing_year = '2025'
 billing_month = '01'
-billing_day = '07'
+billing_day = '15'
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -26,10 +26,10 @@ counseling_appointment_length = 20
 
 # set delay times in seconds
 short_delay = 3
-long_delay = 5
+long_delay = 6
 
 # Set the number of runs
-runs = 4
+runs = 10
 
 # set safe_mode (default = True)
 safe_mode = False
@@ -109,7 +109,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         diagnosis = "No diagnosis found"
 
     def extract_diagnostic_code(diagnosis):
-        match = re.search(r'ICD-?9: (\d+\.?\d)\d?', diagnosis)
+        match = re.search(r'ICD-?9: (V?\d+\.?\d)\d?', diagnosis)
         return match.group(1) if match else None
 
     icd9_code = extract_diagnostic_code(diagnosis)
