@@ -16,7 +16,7 @@ load_dotenv()
 # Set the billing date
 billing_year = '2025'
 billing_month = '01'
-billing_day = '15'
+billing_day = '22'
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -25,7 +25,7 @@ standard_appointment_length = 5
 counseling_appointment_length = 20
 
 # set delay times in seconds
-short_delay = 3
+short_delay = 4
 long_delay = 6
 
 # Set the number of runs
@@ -34,8 +34,18 @@ runs = 10
 # set safe_mode (default = True)
 safe_mode = False
 
+# set headless mode (default = False)
+headless_mode = True
+
+# webdriver options
+options = webdriver.ChromeOptions()
+if headless_mode:
+    options.add_argument("--headless")
+
+
 # Set up the Chrome driver
-driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+
 
 def login_to_oscar(driver):
     driver.get("https://well-kerrisdale.kai-oscar.com/oscar/")
@@ -196,7 +206,7 @@ def process_appointments(driver, day_sheet_window):
             try:
                 process_appointment(driver, appointment, day_sheet_window)
             except StaleElementReferenceException:
-                print("StaleElementReferenceException caught. Refetching appointments and retrying...")
+                # print("StaleElementReferenceException caught. Refetching appointments and retrying...")
                 appointments = get_appointments(driver)
                 continue
 
