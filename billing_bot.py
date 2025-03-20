@@ -9,14 +9,15 @@ from selenium.common.exceptions import StaleElementReferenceException, NoSuchWin
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 import re
-
+import platform
+import requests
 # Load the environment variables
 load_dotenv()
 
 # Set the billing date
 billing_year = '2025'
-billing_month = '01'
-billing_day = '22'
+billing_month = '03'
+billing_day = '20'
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -25,7 +26,7 @@ standard_appointment_length = 5
 counseling_appointment_length = 20
 
 # set delay times in seconds
-short_delay = 4
+short_delay = 3
 long_delay = 6
 
 # Set the number of runs
@@ -42,10 +43,23 @@ options = webdriver.ChromeOptions()
 if headless_mode:
     options.add_argument("--headless")
 
+# Specify the path to the Chrome binary if running on a Mac
+if platform.system() == "Darwin":
+    options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 # Set up the Chrome driver
 driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
+def ping_dasrecord(message):
+    try:
+        payload = {'text': message}
+        response = requests.post("https://relayproxy.vercel.app/das_record_slack", json=payload)
+        if response.status_code == 200:
+            print("Successfully sent message to DAS Record.")
+        else:
+            print("Failed to send message to DAS Record.")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred while sending message to DAS Record: {e}")
 
 def login_to_oscar(driver):
     driver.get("https://well-kerrisdale.kai-oscar.com/oscar/")
@@ -178,17 +192,22 @@ def process_appointment(driver, appointment, day_sheet_window):
     time.sleep(short_delay)
     print("Clicked continue button")
 
-    save_bill = driver.find_element(By.XPATH, "//*[@value='Save Bill']")
-    if not safe_mode:
-        save_bill.click()
-        print("Clicked save bill button")
-    else:
-        print("Safe mode is on. Not saving the bill.")
-        time.sleep(999)
+    try:
+        save_bill = driver.find_element(By.XPATH, "//*[@value='Save Bill']")
+        
+        if not safe_mode:
+            save_bill.click()
+            print("Clicked save bill button")
+        else:
+            print("Safe mode is on. Not saving the bill.")
+            time.sleep(999)
+    except WebDriverException:
+        print("Save bill button not found. Skipping...")
+        pass
 
     driver.switch_to.window(day_sheet_window)
     time.sleep(short_delay)
-    print("Switched back to day_sheet_window after saving the bill")
+    print("Switched back to day sheet window")
 
 def process_appointments(driver, day_sheet_window):
     global cumulative_end_time
@@ -211,12 +230,13 @@ def process_appointments(driver, day_sheet_window):
                 continue
 
 def main():
+    ping_dasrecord("Billing bot started.")
     login_to_oscar(driver)
     navigate_to_billing_date(driver)
     day_sheet_window = driver.current_window_handle
     process_appointments(driver, day_sheet_window)
     driver.quit()
-    print("Script completed successfully.")
+    ping_dasrecord("Billing bot completed successfully.")
 
 if __name__ == "__main__":
     main()
