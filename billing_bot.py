@@ -9,15 +9,15 @@ from selenium.common.exceptions import StaleElementReferenceException, NoSuchWin
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 import re
-import platform
-import requests
+import datetime
+
 # Load the environment variables
 load_dotenv()
 
 # Set the billing date
-billing_year = '2025'
-billing_month = '03'
-billing_day = '20'
+billing_year = str(datetime.date.today().year)
+billing_month = str(datetime.date.today().month)
+billing_day = str(datetime.date.today().day)
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
