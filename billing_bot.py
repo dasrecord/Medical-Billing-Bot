@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import StaleElementReferenceException, NoSuchWindowException, WebDriverException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchWindowException, WebDriverException, ElementClickInterceptedException
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 import platform
@@ -64,22 +66,77 @@ def ping_dasrecord(message):
         print(f"An error occurred while sending message to DAS Record: {e}")
 
 def login_to_oscar(driver):
-    driver.get("https://well-kerrisdale.kai-oscar.com/oscar/")
-    username = driver.find_element(By.ID, "username")
+    driver.get("https://well-kerrisdale.kai-oscar.com/kaiemr/#/")
+    WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.ID, "okta-signin-username"))
+    )
+    username = driver.find_element(By.ID, "okta-signin-username")
     username.send_keys(os.getenv("USERNAME"))
-    password = driver.find_element(By.ID, "password")
+    password = driver.find_element(By.ID, "okta-signin-password")
     password.send_keys(os.getenv("PASSWORD"))
-    pin = driver.find_element(By.ID, "pin")
-    pin.send_keys(os.getenv("PIN"))
-    pin.send_keys(Keys.RETURN)
-    time.sleep(short_delay)
+    password.send_keys(Keys.RETURN)
+    
+    # Wait for login to complete and page to fully load
+    WebDriverWait(driver, long_delay * 2).until(
+        lambda driver: "signin" not in driver.current_url.lower()
+    )
+    
+    # Additional wait for any redirects or page loads to complete
+    time.sleep(long_delay)
+    
+    # Check if we need to navigate to the main oscar interface
+    current_url = driver.current_url
+    print(f"Current URL after login: {current_url}")
+    
+    # If we're still on the kaiemr interface, try to navigate to the oscar interface
+    if "kaiemr" in current_url and "oscar/provider" not in current_url:
+        print("Attempting to navigate to Oscar provider interface...")
+        # Try to find and click a link to the provider interface or navigate directly
+        try:
+            # Look for common navigation elements that might lead to the provider interface
+            provider_link = WebDriverWait(driver, short_delay).until(
+                EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "Provider"))
+            )
+            provider_link.click()
+            print("Clicked provider link")
+        except:
+            # If no provider link found, try direct navigation
+            print("No provider link found, attempting direct navigation...")
+            pass
 
 def navigate_to_billing_date(driver):
     billing_date = f"https://well-kerrisdale.kai-oscar.com/oscar/provider/providercontrol.jsp?year={billing_year}&month={billing_month}&day={billing_day}&view=0&displaymode=day&dboperation=searchappointmentday&viewall=0"
+    print(f"Navigating to: {billing_date}")
+    
+    # Navigate to the billing date URL
     driver.get(billing_date)
+    
+    # Wait for the page to load and check if we're on the right page
+    WebDriverWait(driver, long_delay * 2).until(
+        lambda driver: "providercontrol.jsp" in driver.current_url
+    )
+    
+    print(f"Successfully navigated to: {driver.current_url}")
+    
+    # Wait for the appointment schedule to load
+    WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    
+    # Additional wait for dynamic content to load
+    time.sleep(short_delay)
 
 def get_appointments(driver):
-    return driver.find_elements(By.CLASS_NAME, "appt")
+    # Wait for appointments to load, then return them
+    try:
+        WebDriverWait(driver, long_delay).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "appt"))
+        )
+        return driver.find_elements(By.CLASS_NAME, "appt")
+    except:
+        # If no appointments found, return empty list
+        print("No appointments found or appointments not loaded yet.")
+        return []
 
 def process_appointment(driver, appointment, day_sheet_window):
     global cumulative_end_time
@@ -111,22 +168,43 @@ def process_appointment(driver, appointment, day_sheet_window):
         current_start_time = cumulative_end_time
         print(f"Adjusted start time: {current_start_time.strftime('%H:%M')}")
 
-    e_chart.click()
+    # Scroll to ensure the element is visible and click using JavaScript if needed
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", e_chart)
+    time.sleep(short_delay)
+    
+    try:
+        # Try normal click first
+        WebDriverWait(driver, short_delay).until(EC.element_to_be_clickable(e_chart))
+        e_chart.click()
+    except (WebDriverException, ElementClickInterceptedException):
+        # If normal click fails, use JavaScript click
+        print("Normal click failed, trying JavaScript click...")
+        driver.execute_script("arguments[0].click();", e_chart)
     time.sleep(long_delay)
+    # Wait for new window to open
+    WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 1)
     encounter = driver.window_handles[1]
     driver.switch_to.window(encounter)
     print("Switched to encounter window")
 
-    show_all_notes = driver.find_element(By.XPATH, "//*[text()='Show All Notes']")
+    # Wait for Show All Notes button to be present and clickable
+    show_all_notes = WebDriverWait(driver, long_delay).until(
+        EC.element_to_be_clickable((By.XPATH, "//*[text()='Show All Notes']"))
+    )
     show_all_notes.click()
     time.sleep(short_delay)
     print("Clicked Show All Notes button")
 
+    # Wait for new notes window to open
+    WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
     all_notes = driver.window_handles[2]
     driver.switch_to.window(all_notes)
     print("Switched to all_notes window")
 
-    note_to_bill = driver.find_element(By.XPATH, "/html/body/div[last()]")
+    # Wait for note content to load
+    note_to_bill = WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.XPATH, "/html/body/div[last()]"))
+    )
     note_content = note_to_bill.text
 
     if "A:" in note_content and "P:" in note_content:
@@ -160,42 +238,72 @@ def process_appointment(driver, appointment, day_sheet_window):
     driver.switch_to.window(day_sheet_window)
     print("Switched back to day_sheet_window")
 
-    billing_button.click()
+    # Scroll to ensure billing button is visible and click using JavaScript if needed
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", billing_button)
     time.sleep(short_delay)
+    
+    try:
+        # Try normal click first
+        WebDriverWait(driver, short_delay).until(EC.element_to_be_clickable(billing_button))
+        billing_button.click()
+    except (WebDriverException, ElementClickInterceptedException):
+        # If normal click fails, use JavaScript click
+        print("Normal billing button click failed, trying JavaScript click...")
+        driver.execute_script("arguments[0].click();", billing_button)
+    time.sleep(short_delay)
+    # Wait for billing window to open
+    WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 1)
     billing_window = driver.window_handles[1]
     driver.switch_to.window(billing_window)
     print("Switched to billing_window")
 
-    select_billing_form = driver.find_element(By.ID, "selectBillingForm")
+    # Wait for billing form to load
+    select_billing_form = WebDriverWait(driver, long_delay).until(
+        EC.element_to_be_clickable((By.ID, "selectBillingForm"))
+    )
     select_billing_form.click()
     print("Clicked selectBillingForm")
 
     if counseling:
-        service_code = driver.find_element(By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[3]/td[1]/label/input")
+        service_code = WebDriverWait(driver, long_delay).until(
+            EC.element_to_be_clickable((By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[3]/td[1]/label/input"))
+        )
     else:
-        service_code = driver.find_element(By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[2]/td[1]/label/input")
+        service_code = WebDriverWait(driver, long_delay).until(
+            EC.element_to_be_clickable((By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[2]/td[1]/label/input"))
+        )
     service_code.click()
     print("Selected service code")
 
-    start_time_input = driver.find_element(By.ID, "serviceStartTime")
+    start_time_input = WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.ID, "serviceStartTime"))
+    )
     start_time_input.send_keys(current_start_time.strftime("%H:%M"))
     print("Set start time")
 
-    end_time_input = driver.find_element(By.ID, "serviceEndTime")
+    end_time_input = WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.ID, "serviceEndTime"))
+    )
     end_time_input.send_keys(end_time)
     print("Set end time")
 
-    diagnosis_input = driver.find_element(By.ID, "billing_1_fee_dx1")
+    diagnosis_input = WebDriverWait(driver, long_delay).until(
+        EC.presence_of_element_located((By.ID, "billing_1_fee_dx1"))
+    )
     diagnosis_input.send_keys(icd9_code)
     print("Entered ICD-9 code")
 
-    continue_button = driver.find_element(By.XPATH, "//*[@value='Continue']")
+    continue_button = WebDriverWait(driver, long_delay).until(
+        EC.element_to_be_clickable((By.XPATH, "//*[@value='Continue']"))
+    )
     continue_button.click()
     time.sleep(short_delay)
     print("Clicked continue button")
 
     try:
-        save_bill = driver.find_element(By.XPATH, "//*[@value='Save Bill']")
+        save_bill = WebDriverWait(driver, long_delay).until(
+            EC.element_to_be_clickable((By.XPATH, "//*[@value='Save Bill']"))
+        )
         
         if not safe_mode:
             save_bill.click()
@@ -232,7 +340,7 @@ def process_appointments(driver, day_sheet_window):
                 continue
 
 def main():
-    ping_dasrecord("Billing bot started.")
+    # ping_dasrecord("Billing bot started.")
     login_to_oscar(driver)
     navigate_to_billing_date(driver)
     day_sheet_window = driver.current_window_handle
