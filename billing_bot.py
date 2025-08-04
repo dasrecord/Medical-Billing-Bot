@@ -145,7 +145,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     appointment_status = appointment.find_element(By.XPATH, ".//img[1]").get_attribute("title")
     # print(f"Appointment status: {appointment_status}")
 
-    if appointment_status in ["Billed/Verified","Billed/Signed", "Billed", "Cancelled"]:
+    if appointment_status in ["No Show","Billed/Verified","Billed/Signed", "Billed", "Cancelled"]:
         print("Appointment already billed or cancelled.")
         return
 
