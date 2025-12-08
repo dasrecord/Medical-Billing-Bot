@@ -1,13 +1,14 @@
 import time
 import datetime
 import os
+import logging
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import StaleElementReferenceException, NoSuchWindowException, WebDriverException, ElementClickInterceptedException
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchWindowException, WebDriverException, ElementClickInterceptedException, NoSuchElementException
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 import platform
@@ -15,13 +16,29 @@ import requests
 import re
 import datetime
 
+# ICD9 Code Substitution Dictionary
+# Maps invalid codes to valid substitute codes
+icd9_substitutes = {
+    "V586": "V68",
+    # Add more substitutions as needed based on failed_icd9_codes.log
+    # Format: "invalid_code": "valid_substitute"
+}
+
 # Load the environment variables
 load_dotenv()
+
+# Set up logging for failed ICD9 codes
+logging.basicConfig(
+    filename='failed_icd9_codes.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day)
+billing_day = str(datetime.date.today().day) 
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -219,6 +236,12 @@ def process_appointment(driver, appointment, day_sheet_window):
     icd9_code = extract_diagnostic_code(diagnosis)
     icd9_code = icd9_code.replace(".", "") if icd9_code else "No ICD9 code found"
     print(f"Extracted ICD-9 code: {icd9_code}")
+    
+    # Apply ICD9 code substitution if needed
+    original_icd9 = icd9_code
+    if icd9_code in icd9_substitutes:
+        icd9_code = icd9_substitutes[icd9_code]
+        print(f"Substituted {original_icd9} with {icd9_code}")
 
     if "#C" in note_content:
         appointment_length = counseling_appointment_length
@@ -312,7 +335,9 @@ def process_appointment(driver, appointment, day_sheet_window):
             print("Safe mode is on. Not saving the bill.")
             time.sleep(999)
     except WebDriverException:
-        print("Save bill button not found. Skipping...")
+        print("Save bill button not found. Invalid billing code. Skipping...")
+        # Log the failed ICD9 code and diagnosis for creating substitute codes
+        logging.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()}")
         pass
 
     driver.switch_to.window(day_sheet_window)
