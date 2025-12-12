@@ -27,18 +27,29 @@ icd9_substitutes = {
 # Load the environment variables
 load_dotenv()
 
-# Set up logging for failed ICD9 codes
-logging.basicConfig(
-    filename='failed_icd9_codes.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Set up logging for failed ICD9 codes only
+# Create a custom logger to avoid capturing other library logs
+icd9_logger = logging.getLogger('failed_icd9')
+icd9_logger.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = logging.FileHandler('failed_icd9_codes.log')
+file_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+file_handler.setFormatter(formatter)
+
+# Add handler to logger
+icd9_logger.addHandler(file_handler)
+
+# Prevent propagation to root logger to avoid other logs
+icd9_logger.propagate = False
 
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day) 
+billing_day = str(datetime.date.today().day -1) 
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -337,7 +348,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     except WebDriverException:
         print("Save bill button not found. Invalid billing code. Skipping...")
         # Log the failed ICD9 code and diagnosis for creating substitute codes
-        logging.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()}")
+        icd9_logger.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()}")
         pass
 
     driver.switch_to.window(day_sheet_window)
