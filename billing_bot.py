@@ -21,6 +21,7 @@ import datetime
 icd9_substitutes = {
     "V586": "V68",
     "5589": "558",
+    "7029": "702"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
