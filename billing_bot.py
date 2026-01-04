@@ -96,9 +96,9 @@ standard_appointment_length = 5
 # counseling_appointment_length is 20 minutes
 counseling_appointment_length = 20
 
-# set delay times in seconds
-short_delay = 3
-long_delay = 6
+# set delay times in seconds - optimized for speed
+short_delay = 1
+long_delay = 3
 
 # Set the number of runs - will be dynamically set based on appointments found
 runs = None  # Will be set automatically based on appointment count
@@ -141,12 +141,12 @@ if platform.system() == "Darwin":
 def setup_chrome_driver():
     """Automatically start browser with remote debugging and connect"""
     
-    print("🤖 AUTOMATED BROWSER SETUP")
+    print("AUTOMATED BROWSER SETUP")
     print("=" * 50)
     
     try:
         # Step 1: Kill any existing browser processes
-        print("1️⃣ Closing any existing browsers...")
+        print("Step 1: Closing any existing browsers...")
         os.system("pkill -f 'Google Chrome' 2>/dev/null")
         os.system("pkill -f 'Brave Browser' 2>/dev/null")
         os.system("pkill -f 'chrome' 2>/dev/null")
@@ -166,12 +166,12 @@ def setup_chrome_driver():
         else:
             raise Exception("Neither Brave nor Chrome found in Applications")
         
-        print(f"2️⃣ Starting {browser_name} with remote debugging...")
+        print(f"Step 2: Starting {browser_name} with remote debugging...")
         os.system(browser_command)
-        time.sleep(3)  # Give browser time to start
+        time.sleep(2)  # Reduced startup wait
         
         # Step 3: Connect and check if already logged in
-        print(f"3️⃣ {browser_name} started! Connecting and checking login status...")
+        print(f"Step 3: {browser_name} started! Connecting...")
         
         # Connect to browser first to control it
         chrome_options = webdriver.ChromeOptions()
@@ -180,25 +180,23 @@ def setup_chrome_driver():
         service = ChromeService(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
-        print("🔍 Checking if already logged into EMR...")
+        print("Checking login status...")
         driver.get("https://well-kerrisdale.kai-oscar.com/oscar")
-        time.sleep(3)
+        time.sleep(2)
         
-        # Check if already logged in by looking for login form vs main interface
+        # Quick login check
         current_url = driver.current_url
         page_source = driver.page_source.lower()
         
         if "username" in page_source and "password" in page_source and "login" in current_url.lower():
-            # Not logged in - need to login
-            print("🔐 Not logged in. Attempting automatic login...")
+            print("Not logged in. Attempting automatic login...")
             
             username = os.getenv('OSCAR_USERNAME')
             password = os.getenv('OSCAR_PASSWORD')
             
             if username and password:
                 try:
-                    # Auto-fill credentials
-                    username_field = WebDriverWait(driver, 5).until(
+                    username_field = WebDriverWait(driver, 3).until(
                         EC.presence_of_element_located((By.NAME, "username"))
                     )
                     password_field = driver.find_element(By.NAME, "password")
@@ -208,35 +206,31 @@ def setup_chrome_driver():
                     password_field.clear()
                     password_field.send_keys(password)
                     
-                    # Submit login
                     login_button = driver.find_element(By.XPATH, "//input[@type='submit' or @value='Sign In' or @value='Login']")
                     login_button.click()
                     
-                    print("✅ Login submitted! Waiting for login to complete...")
-                    time.sleep(5)
+                    print("Login submitted!")
+                    time.sleep(3)
                     
                 except Exception as login_error:
-                    print(f"⚠️ Auto-login failed: {login_error}")
-                    print("🔐 Please complete login manually")
+                    print(f"Auto-login failed: {login_error}")
                     input("Press ENTER when logged in...")
             else:
-                print("⚠️ No credentials in .env file - please login manually")
                 input("Press ENTER when logged in...")
         else:
-            print("✅ Already logged into EMR!")
+            print("Already logged in!")
         
-        # Navigate to provider schedule
-        print("📅 Navigating to provider schedule...")
+        print("Navigating to provider schedule...")
         billing_date = f"https://well-kerrisdale.kai-oscar.com/oscar/provider/providercontrol.jsp?year={billing_year}&month={billing_month}&day={billing_day}&view=0&displaymode=day&dboperation=searchappointmentday&viewall=0"
         driver.get(billing_date)
         time.sleep(3)
         
-        print("🎯 Ready to process appointments!")
+        print("Ready to process appointments!")
         return driver
         
     except Exception as e:
-        print(f"❌ Automated setup failed: {str(e)}")
-        print("\n🔧 MANUAL FALLBACK:")
+        print(f"Automated setup failed: {str(e)}")
+        print("\nMANUAL FALLBACK:")
         print("If automated startup failed, you can manually run:")
         print("1. Close all browsers")
         print("2. Run: /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --remote-debugging-port=9222")
@@ -264,25 +258,25 @@ def login_to_oscar(driver):
     
     try:
         current_url = driver.current_url
-        print(f"📍 Current URL: {current_url}")
+        print(f"Current URL: {current_url}")
         
         # Check if we're already on the right page
         if "oscar" in current_url and "provider" in current_url:
-            print("✅ Perfect! Already on provider schedule page")
+            print("Perfect! Already on provider schedule page")
             return True
         elif "oscar" in current_url:
-            print("✅ Connected to EMR - navigating to schedule...")
+            print("Connected to EMR - navigating to schedule...")
             billing_date = f"https://well-kerrisdale.kai-oscar.com/oscar/provider/providercontrol.jsp?year={billing_year}&month={billing_month}&day={billing_day}&view=0&displaymode=day&dboperation=searchappointmentday&viewall=0"
             driver.get(billing_date)
             return True
         else:
-            print("❌ Not connected to EMR system")
+            print("Not connected to EMR system")
             print("Please make sure you're logged into the EMR in the browser")
             print("and on the provider schedule page before running the bot")
             return False
             
     except Exception as e:
-        print(f"❌ Session check failed: {str(e)}")
+        print(f"Session check failed: {str(e)}")
         return False
 
 def navigate_to_billing_date(driver):
@@ -368,102 +362,41 @@ def process_appointment(driver, appointment, day_sheet_window):
     driver.switch_to.window(encounter)
     print("Switched to encounter window")
 
-    # Debug: Check what's actually in the encounter window
-    print("🔍 Debugging encounter window content...")
+    # Quick encounter window processing
     try:
-        # Wait a bit for the page to load
-        time.sleep(3)
+        time.sleep(1)  # Brief wait
         
-        # Check if we got a 403 or other error
-        page_source_snippet = driver.page_source[:500]
-        if "403" in page_source_snippet or "Forbidden" in page_source_snippet:
-            print("❌ 403 Forbidden error detected in encounter window")
-            print("🔄 The existing session approach didn't fully bypass detection")
+        # Quick 403 check
+        if "403" in driver.page_source[:300] or "Forbidden" in driver.page_source[:300]:
+            print("403 error detected")
             return
         
-        # Check current URL
-        current_url = driver.current_url
-        print(f"📍 Encounter window URL: {current_url}")
-        
-        # Look for Show All Notes button with multiple strategies
-        print("🔍 Looking for 'Show All Notes' button...")
-        
-        # Strategy 1: Exact text match
+        # Find Show All Notes button quickly
         show_all_notes = None
         try:
-            show_all_notes = WebDriverWait(driver, 5).until(
+            show_all_notes = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable((By.XPATH, "//*[text()='Show All Notes']"))
             )
-            print("✅ Found 'Show All Notes' button (exact text)")
         except:
-            print("❌ Exact text 'Show All Notes' not found")
-        
-        # Strategy 2: Partial text match
-        if not show_all_notes:
             try:
-                show_all_notes = WebDriverWait(driver, 5).until(
+                show_all_notes = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Show All')]"))
                 )
-                print("✅ Found button with 'Show All' text")
             except:
-                print("❌ 'Show All' partial text not found")
-        
-        # Strategy 3: Look for any note-related buttons
-        if not show_all_notes:
-            try:
-                show_all_notes = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Notes') or contains(text(), 'notes')]"))
-                )
-                print("✅ Found note-related button")
-            except:
-                print("❌ No note-related buttons found")
-        
-        # Strategy 4: Debug - show all clickable elements
-        if not show_all_notes:
-            print("🔍 Debugging: Looking for all clickable elements...")
-            try:
-                clickable_elements = driver.find_elements(By.XPATH, "//a | //button | //input[@type='button'] | //input[@type='submit']")
-                print(f"Found {len(clickable_elements)} clickable elements:")
-                for i, element in enumerate(clickable_elements[:10]):  # Show first 10
-                    try:
-                        text = element.text.strip()
-                        if text:
-                            print(f"  {i+1}: '{text}'")
-                    except:
-                        pass
-                        
-                # Try to find by common patterns
-                for pattern in ["Notes", "Show", "All", "Clinical", "Chart"]:
-                    try:
-                        element = driver.find_element(By.XPATH, f"//*[contains(text(), '{pattern}')]")
-                        print(f"📍 Found element with '{pattern}': {element.text}")
-                    except:
-                        pass
-                        
-            except Exception as debug_error:
-                print(f"Debug error: {debug_error}")
+                print("Show All Notes button not found")
+                return
         
         if show_all_notes:
             show_all_notes.click()
-            time.sleep(short_delay)
-            print("Clicked Show All Notes button")
         else:
-            print("❌ Could not find 'Show All Notes' button")
-            print("🔄 The encounter window interface may have changed")
-            # Take a screenshot for debugging if possible
-            try:
-                driver.save_screenshot("/tmp/encounter_debug.png")
-                print("📸 Screenshot saved to /tmp/encounter_debug.png")
-            except:
-                pass
             return
-            
+        
     except Exception as encounter_error:
-        print(f"❌ Error in encounter window: {str(encounter_error)}")
+        print(f"Encounter error: {str(encounter_error)}")
         return
 
-    # Give time for the Show All Notes action to process
-    time.sleep(short_delay)
+    # Give time for action to process
+    time.sleep(1)
 
     # Wait for new notes window to open
     WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
@@ -533,68 +466,56 @@ def process_appointment(driver, appointment, day_sheet_window):
     driver.switch_to.window(billing_window)
     print("Switched to billing_window")
 
-    # Wait for billing form to load
-    select_billing_form = WebDriverWait(driver, long_delay).until(
+    # Quick billing form processing
+    select_billing_form = WebDriverWait(driver, 5).until(
         EC.element_to_be_clickable((By.ID, "selectBillingForm"))
     )
     select_billing_form.click()
-    print("Clicked selectBillingForm")
 
-    if counseling:
-        service_code = WebDriverWait(driver, long_delay).until(
-            EC.element_to_be_clickable((By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[3]/td[1]/label/input"))
-        )
-    else:
-        service_code = WebDriverWait(driver, long_delay).until(
-            EC.element_to_be_clickable((By.XPATH, "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[2]/td[1]/label/input"))
-        )
+    # Select service code based on counseling
+    service_code_xpath = "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[3]/td[1]/label/input" if counseling else "//*[@id='billingFormTable']/tbody/tr[1]/td[1]/table[1]/tbody/tr[2]/td[1]/label/input"
+    service_code = WebDriverWait(driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, service_code_xpath))
+    )
     service_code.click()
-    print("Selected service code")
 
-    start_time_input = WebDriverWait(driver, long_delay).until(
+    # Set times and diagnosis quickly
+    start_time_input = WebDriverWait(driver, 3).until(
         EC.presence_of_element_located((By.ID, "serviceStartTime"))
     )
     start_time_input.send_keys(current_start_time.strftime("%H:%M"))
-    print("Set start time")
 
-    end_time_input = WebDriverWait(driver, long_delay).until(
+    end_time_input = WebDriverWait(driver, 3).until(
         EC.presence_of_element_located((By.ID, "serviceEndTime"))
     )
     end_time_input.send_keys(end_time)
-    print("Set end time")
 
-    diagnosis_input = WebDriverWait(driver, long_delay).until(
+    diagnosis_input = WebDriverWait(driver, 3).until(
         EC.presence_of_element_located((By.ID, "billing_1_fee_dx1"))
     )
     diagnosis_input.send_keys(icd9_code)
-    print("Entered ICD-9 code")
 
-    continue_button = WebDriverWait(driver, long_delay).until(
+    continue_button = WebDriverWait(driver, 3).until(
         EC.element_to_be_clickable((By.XPATH, "//*[@value='Continue']"))
     )
     continue_button.click()
-    time.sleep(short_delay)
-    print("Clicked continue button")
 
     try:
-        save_bill = WebDriverWait(driver, long_delay).until(
+        save_bill = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//*[@value='Save Bill']"))
         )
         
         if not safe_mode:
             save_bill.click()
-            print("Clicked save bill button")
         else:
-            print("Safe mode is on. Not saving the bill.")
-            time.sleep(999)
+            print("Safe mode: Not saving")
+            time.sleep(5)
     except WebDriverException:
-        print("Save bill button not found. Invalid billing code. Skipping...")
-        # Log the failed ICD9 code and diagnosis for creating substitute codes
+        print("Invalid billing code - logging for review")
         icd9_logger.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()}")
         pass
 
     driver.switch_to.window(day_sheet_window)
-    time.sleep(short_delay)
     print("Switched back to day sheet window")
 
 def process_appointments(driver, day_sheet_window):
@@ -636,9 +557,9 @@ def process_appointments(driver, day_sheet_window):
             processed_count += 1  # Skip this appointment and continue
             continue
     
-    print(f"\n✅ Completed processing {processed_count} appointments!")
+    print(f"\nCompleted processing {processed_count} appointments!")
     if counseling_appointment_count > 0:
-        print(f"📋 Counseling appointments processed: {counseling_appointment_count}")
+        print(f"Counseling appointments processed: {counseling_appointment_count}")
 
 def main():
     # ping_dasrecord("Billing bot started.")
