@@ -100,8 +100,8 @@ counseling_appointment_length = 20
 short_delay = 3
 long_delay = 6
 
-# Set the number of runs
-runs = 36
+# Set the number of runs - will be dynamically set based on appointments found
+runs = None  # Will be set automatically based on appointment count
 
 # set safe_mode (default = True)
 safe_mode = False
@@ -599,23 +599,46 @@ def process_appointment(driver, appointment, day_sheet_window):
 
 def process_appointments(driver, day_sheet_window):
     global cumulative_end_time
-    global runs
     global counseling_appointment_count
 
     cumulative_end_time = None
     counseling_appointment_count = 0
 
-    for _ in range(runs):
-        appointments = get_appointments(driver)
-        print(f"Found {len(appointments)} appointments.")
-
-        for appointment in appointments:
-            try:
-                process_appointment(driver, appointment, day_sheet_window)
-            except StaleElementReferenceException:
-                # print("StaleElementReferenceException caught. Refetching appointments and retrying...")
-                appointments = get_appointments(driver)
-                continue
+    # Get initial appointments and set runs based on count
+    appointments = get_appointments(driver)
+    total_appointments = len(appointments)
+    print(f"Found {total_appointments} appointments. Processing each one...")
+    
+    processed_count = 0
+    
+    # Process each appointment, handling stale element exceptions
+    while processed_count < total_appointments:
+        # Refresh appointment list in case of stale elements
+        current_appointments = get_appointments(driver)
+        
+        if processed_count >= len(current_appointments):
+            # No more appointments to process
+            break
+            
+        appointment = current_appointments[processed_count]
+        
+        try:
+            print(f"\nProcessing appointment {processed_count + 1} of {total_appointments}")
+            process_appointment(driver, appointment, day_sheet_window)
+            processed_count += 1
+            
+        except StaleElementReferenceException:
+            print("StaleElementReferenceException caught. Refreshing appointments and retrying...")
+            # Don't increment processed_count, try the same appointment again
+            continue
+        except Exception as e:
+            print(f"Error processing appointment {processed_count + 1}: {str(e)}")
+            processed_count += 1  # Skip this appointment and continue
+            continue
+    
+    print(f"\n✅ Completed processing {processed_count} appointments!")
+    if counseling_appointment_count > 0:
+        print(f"📋 Counseling appointments processed: {counseling_appointment_count}")
 
 def main():
     # ping_dasrecord("Billing bot started.")
