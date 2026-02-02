@@ -70,6 +70,35 @@ def safe_screenshot(driver, filename):
         print(f"Screenshot failed: {e}")
         return False
 
+def safe_close_extra_windows(driver, main_window):
+    """Quickly close all windows except the main window"""
+    try:
+        if not check_browser_connection(driver):
+            return False
+        
+        current_handles = driver.window_handles
+        extra_windows = [h for h in current_handles if h != main_window]
+        
+        # Only do cleanup if there are actually extra windows
+        if not extra_windows:
+            return True
+            
+        for handle in extra_windows:
+            try:
+                driver.switch_to.window(handle)
+                driver.close()
+            except:
+                pass  # Ignore errors when closing windows
+        
+        # Switch back to main window
+        try:
+            driver.switch_to.window(main_window)
+            return True
+        except:
+            return False
+    except:
+        return False
+
 # ICD9 Code Substitution Dictionary
 # Maps invalid codes to valid substitute codes
 icd9_substitutes = {
@@ -514,15 +543,22 @@ def navigate_to_billing_date(driver):
     time.sleep(short_delay)
 
 def get_appointments(driver):
+    # Check browser connection first
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost in get_appointments")
+        return []
+    
     # Wait for appointments to load, then return them
     try:
         WebDriverWait(driver, long_delay).until(
             EC.presence_of_element_located((By.CLASS_NAME, "appt"))
         )
-        return driver.find_elements(By.CLASS_NAME, "appt")
-    except:
+        appointments = driver.find_elements(By.CLASS_NAME, "appt")
+        print(f"✅ Found {len(appointments)} appointments")
+        return appointments
+    except Exception as e:
         # If no appointments found, return empty list
-        print("No appointments found or appointments not loaded yet.")
+        print(f"⚠️  No appointments found or appointments not loaded yet: {e}")
         return []
 
 def process_appointment(driver, appointment, day_sheet_window):
@@ -530,8 +566,18 @@ def process_appointment(driver, appointment, day_sheet_window):
     global counseling_appointment_count
     encounter_window = None  # Initialize at function level
     billing_window = None   # Initialize at function level
-    # print(f"Processing appointment: {appointment.text}")
-    appointment_status = appointment.find_element(By.XPATH, ".//img[1]").get_attribute("title")
+    
+    # Check browser connection before proceeding
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost before processing appointment")
+        raise WebDriverException("Browser connection lost")
+    
+    try:
+        # print(f"Processing appointment: {appointment.text}")
+        appointment_status = appointment.find_element(By.XPATH, ".//img[1]").get_attribute("title")
+    except Exception as e:
+        print(f"❌ Failed to read appointment status: {e}")
+        raise
     # print(f"Appointment status: {appointment_status}")
 
     if appointment_status in ["No Show","Billed/Verified","Billed/Signed", "Billed", "Cancelled"]:
@@ -559,6 +605,11 @@ def process_appointment(driver, appointment, day_sheet_window):
         current_start_time = cumulative_end_time
         print(f"Adjusted start time: {current_start_time.strftime('%H:%M')}")
 
+    # Check browser connection before clicking encounter
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost before clicking encounter")
+        raise WebDriverException("Browser connection lost")
+    
     # Scroll to ensure the element is visible and click using JavaScript if needed
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", e_chart)
     time.sleep(short_delay)
@@ -571,11 +622,21 @@ def process_appointment(driver, appointment, day_sheet_window):
         e_chart.click()
         print("✅ Encounter button clicked")
     except (WebDriverException, ElementClickInterceptedException):
+        # Check connection before trying JavaScript click
+        if not check_browser_connection(driver):
+            print("❌ Browser connection lost during click attempt")
+            raise WebDriverException("Browser connection lost")
         # If normal click fails, use JavaScript click
         print("🔄 Normal click failed, trying JavaScript click...")
         driver.execute_script("arguments[0].click();", e_chart)
         print("✅ JavaScript click successful")
     time.sleep(long_delay)
+    
+    # Check browser connection before window operations
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost before window switching")
+        raise WebDriverException("Browser connection lost")
+    
     # Wait for new window to open
     WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 1)
     
@@ -636,8 +697,8 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     # Quick encounter window processing
     try:
-        # Wait longer for encounter window to fully load
-        time.sleep(3)  # Increased wait time
+        # Wait for encounter window to fully load
+        time.sleep(1.5)  # Reduced wait time for faster processing
         
         # Wait for the page to be ready
         WebDriverWait(driver, 10).until(
@@ -775,18 +836,37 @@ def process_appointment(driver, appointment, day_sheet_window):
     # Give time for action to process
     time.sleep(1)
 
-    # Wait for new notes window to open
-    WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
-    all_notes = driver.window_handles[2]
-    driver.switch_to.window(all_notes)
-    print("📄 Switched to all_notes window")
+    # Check browser connection before window operations
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost before notes window processing")
+        return
 
-    # Wait for note content to load
-    print("🔍 Reading patient notes...")
-    note_to_bill = WebDriverWait(driver, long_delay).until(
-        EC.presence_of_element_located((By.XPATH, "/html/body/div[last()]"))
-    )
-    note_content = note_to_bill.text
+    try:
+        # Wait for new notes window to open
+        WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
+        all_notes = driver.window_handles[2]
+        driver.switch_to.window(all_notes)
+        print("📄 Switched to all_notes window")
+
+        # Check connection after window switch
+        if not check_browser_connection(driver):
+            print("❌ Browser connection lost after switching to notes window")
+            return
+
+        # Wait for note content to load
+        print("🔍 Reading patient notes...")
+        note_to_bill = WebDriverWait(driver, long_delay).until(
+            EC.presence_of_element_located((By.XPATH, "/html/body/div[last()]"))
+        )
+        note_content = note_to_bill.text
+    except Exception as notes_error:
+        print(f"❌ Error accessing notes window: {notes_error}")
+        # Try to recover by going back to day sheet
+        try:
+            driver.switch_to.window(day_sheet_window)
+        except:
+            pass
+        return
 
     print("📝 Extracting diagnosis from notes...")
     if "A:" in note_content and "P:" in note_content:
@@ -822,30 +902,26 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     # Safely close windows and return to day sheet
     try:
-        print(f"🧹 Cleaning up windows... Current count: {len(driver.window_handles)}")
-        
-        # Get list of all windows that are NOT the day sheet window
+        # Quick cleanup - just close extra windows without detailed logging
         windows_to_close = [handle for handle in driver.window_handles if handle != day_sheet_window]
         
-        # Close all windows except the day sheet window with shorter timeout
-        for i, window_handle in enumerate(windows_to_close, 1):
-            try:
-                if window_handle in driver.window_handles:  # Check if window still exists
-                    print(f"🗑️  Closing window {i}/{len(windows_to_close)}...")
-                    driver.switch_to.window(window_handle)
-                    
-                    # Set shorter timeout for window close operations
-                    driver.set_page_load_timeout(5)  # 5 seconds instead of default 20
-                    driver.close()
-                    print(f"✅ Closed window {i}")
-            except Exception as close_error:
-                print(f"⚠️  Timeout closing window {i} (continuing): {str(close_error)[:50]}...")
-                continue
+        if windows_to_close:
+            print(f"🧹 Cleaning up {len(windows_to_close)} extra windows...")
+            
+            # Close windows quickly without switching to each one
+            for window_handle in windows_to_close:
+                try:
+                    if window_handle in driver.window_handles:
+                        driver.switch_to.window(window_handle)
+                        driver.close()
+                except:
+                    continue  # Skip problematic windows silently
+            
+            print("✅ Windows cleaned")
         
         # Switch back to day sheet window
         if day_sheet_window in driver.window_handles:
             driver.switch_to.window(day_sheet_window)
-            print(f"🏠 Back to day sheet window (cleaned up to {len(driver.window_handles)} windows)")
         else:
             # If day sheet window is gone, switch to any remaining window
             if driver.window_handles:
@@ -853,12 +929,15 @@ def process_appointment(driver, appointment, day_sheet_window):
                 print("⚠️  Day sheet window missing, using first available window")
                 
     except Exception as window_error:
-        print(f"Window cleanup error: {window_error}")
         # Try to get back to a valid window
         if driver.window_handles:
             driver.switch_to.window(driver.window_handles[0])
-            print("Switched to first available window after cleanup error")
 
+    # Check browser connection before billing operations
+    if not check_browser_connection(driver):
+        print("❌ Browser connection lost before billing window operations")
+        return
+    
     # Scroll to ensure billing button is visible and click using JavaScript if needed
     print(f"💵 Opening billing window...")
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", billing_button)
@@ -982,7 +1061,7 @@ def process_appointment(driver, appointment, day_sheet_window):
             save_bill.click()
         else:
             print("Safe mode: Not saving")
-            time.sleep(5)
+            time.sleep(2)  # Reduced delay for safe mode
     except WebDriverException:
         print("Invalid billing code - logging for review")
         icd9_logger.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()}")
@@ -1007,8 +1086,18 @@ def process_appointments(driver, day_sheet_window):
     
     # Process each appointment, handling stale element exceptions
     while processed_count < total_appointments:
+        # Check browser connection before each appointment
+        if not check_browser_connection(driver):
+            print("❌ Browser connection lost during appointment processing")
+            print(f"Successfully processed {processed_count} appointments before connection loss")
+            break
+        
         # Refresh appointment list in case of stale elements
-        current_appointments = get_appointments(driver)
+        try:
+            current_appointments = get_appointments(driver)
+        except Exception as e:
+            print(f"❌ Failed to refresh appointment list: {e}")
+            break
         
         if processed_count >= len(current_appointments):
             # No more appointments to process
@@ -1018,15 +1107,30 @@ def process_appointments(driver, day_sheet_window):
         
         try:
             print(f"\nProcessing appointment {processed_count + 1} of {total_appointments}")
+            
+            # Switch back to day sheet window before each appointment
+            driver.switch_to.window(day_sheet_window)
+            
             process_appointment(driver, appointment, day_sheet_window)
             processed_count += 1
             
         except StaleElementReferenceException:
-            print("StaleElementReferenceException caught. Refreshing appointments and retrying...")
+            print("⚠️  StaleElementReferenceException caught. Refreshing appointments and retrying...")
             # Don't increment processed_count, try the same appointment again
             continue
+        except WebDriverException as we:
+            print(f"❌ WebDriver error processing appointment {processed_count + 1}: {str(we)}")
+            
+            # Check if it's a connection issue
+            if not check_browser_connection(driver):
+                print("🔌 Browser connection confirmed lost. Stopping processing.")
+                break
+            else:
+                print("🔄 Browser still connected, skipping this appointment and continuing")
+                processed_count += 1
+                continue
         except Exception as e:
-            print(f"Error processing appointment {processed_count + 1}: {str(e)}")
+            print(f"❌ Error processing appointment {processed_count + 1}: {str(e)}")
             processed_count += 1  # Skip this appointment and continue
             continue
     
