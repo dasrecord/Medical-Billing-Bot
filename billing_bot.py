@@ -71,31 +71,31 @@ def safe_screenshot(driver, filename):
         return False
 
 def safe_close_extra_windows(driver, main_window):
-    """Quickly close all windows except the main window"""
+    """Fastest possible window cleanup - minimal operations"""
     try:
-        if not check_browser_connection(driver):
-            return False
+        # Get current handles once
+        handles = driver.window_handles
         
-        current_handles = driver.window_handles
-        extra_windows = [h for h in current_handles if h != main_window]
-        
-        # Only do cleanup if there are actually extra windows
-        if not extra_windows:
+        # If only one window, we're done
+        if len(handles) <= 1:
             return True
             
-        for handle in extra_windows:
-            try:
-                driver.switch_to.window(handle)
-                driver.close()
-            except:
-                pass  # Ignore errors when closing windows
+        # Close extra windows with minimal error checking
+        for handle in handles:
+            if handle != main_window:
+                try:
+                    driver.switch_to.window(handle)
+                    driver.close()
+                except:
+                    pass
         
-        # Switch back to main window
-        try:
+        # Switch to main window once at the end
+        if main_window in driver.window_handles:
             driver.switch_to.window(main_window)
-            return True
-        except:
-            return False
+        elif driver.window_handles:
+            driver.switch_to.window(driver.window_handles[0])
+        
+        return True
     except:
         return False
 
@@ -111,6 +111,11 @@ icd9_substitutes = {
     "6061":"606",
     "4900":"490",
     "6901":"690",
+    "6840":"684",
+    "6901":"690",
+    "3391":"7840",
+    "4600":"460",
+    "4620":"462",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
@@ -869,18 +874,45 @@ def process_appointment(driver, appointment, day_sheet_window):
         return
 
     print("📝 Extracting diagnosis from notes...")
+    # print(f"📋 Full note content (first 500 chars): {note_content[:500]}...")
+    
     if "A:" in note_content and "P:" in note_content:
         diagnosis = note_content.split("A:")[1].split("P:")[0]
+        print(f"🔍 Extracted diagnosis section: {diagnosis.strip()}")
     else:
-        diagnosis = "No diagnosis found"
+        print("❌ No A: and P: sections found, using full note content")
+        diagnosis = note_content
+    
+    # Also search for ICD codes in the full note content as backup
+    full_note_diagnosis = note_content
 
     def extract_diagnostic_code(diagnosis):
-        match = re.search(r'ICD-?9: (V?\d+\.?\d)\d?', diagnosis)
-        return match.group(1) if match else None
+        # More comprehensive regex patterns for ICD-9 codes
+        patterns = [
+            r'ICD-?9:\s*([V]?\d{1,3}\.?\d{0,2})',  # Standard format: ICD9: 034.0 or ICD-9: V123.45
+            r'ICD-?9\s*([V]?\d{1,3}\.?\d{0,2})',   # Without colon: ICD9 034.0
+            r'\(ICD-?9:\s*([V]?\d{1,3}\.?\d{0,2})\)', # In parentheses: (ICD9: 034.0)
+            r'ICD-?9\s*code:\s*([V]?\d{1,3}\.?\d{0,2})', # With "code": ICD9 code: 034.0
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, diagnosis, re.IGNORECASE)
+            if match:
+                print(f"🎯 ICD-9 pattern matched: {pattern} -> {match.group(1)}")
+                return match.group(1)
+        
+        print(f"❌ No ICD-9 pattern matched in: {diagnosis[:100]}...")
+        return None
 
     icd9_code = extract_diagnostic_code(diagnosis)
+    
+    # If no ICD code found in diagnosis section, try the full note content
+    if not icd9_code:
+        print("🔍 No ICD code in diagnosis section, searching full note content...")
+        icd9_code = extract_diagnostic_code(full_note_diagnosis)
+    
     icd9_code = icd9_code.replace(".", "") if icd9_code else "No ICD9 code found"
-    print(f"🔍 Extracted ICD-9 code: {icd9_code}")
+    print(f"🔍 Final extracted ICD-9 code: {icd9_code}")
     
     # Apply ICD9 code substitution if needed
     original_icd9 = icd9_code
@@ -902,33 +934,18 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     # Safely close windows and return to day sheet
     try:
-        # Quick cleanup - just close extra windows without detailed logging
-        windows_to_close = [handle for handle in driver.window_handles if handle != day_sheet_window]
-        
-        if windows_to_close:
-            print(f"🧹 Cleaning up {len(windows_to_close)} extra windows...")
+        extra_window_count = len(driver.window_handles) - 1
+        if extra_window_count > 0:
+            print(f"🧹 Cleaning up {extra_window_count} extra windows...")
             
-            # Close windows quickly without switching to each one
-            for window_handle in windows_to_close:
-                try:
-                    if window_handle in driver.window_handles:
-                        driver.switch_to.window(window_handle)
-                        driver.close()
-                except:
-                    continue  # Skip problematic windows silently
-            
+        success = safe_close_extra_windows(driver, day_sheet_window)
+        if success:
             print("✅ Windows cleaned")
-        
-        # Switch back to day sheet window
-        if day_sheet_window in driver.window_handles:
-            driver.switch_to.window(day_sheet_window)
         else:
-            # If day sheet window is gone, switch to any remaining window
-            if driver.window_handles:
-                driver.switch_to.window(driver.window_handles[0])
-                print("⚠️  Day sheet window missing, using first available window")
+            print("⚠️ Window cleanup had issues")
                 
     except Exception as window_error:
+        print(f"Window cleanup error: {window_error}")
         # Try to get back to a valid window
         if driver.window_handles:
             driver.switch_to.window(driver.window_handles[0])
