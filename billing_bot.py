@@ -2,6 +2,9 @@ import time
 import datetime
 import os
 import logging
+import subprocess
+import socket
+import shutil
 from dotenv import load_dotenv
 import undetected_chromedriver as uc
 from selenium import webdriver
@@ -226,9 +229,9 @@ if platform.system() == "Darwin":
     options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 def setup_chrome_driver():
-    """Start Chrome with remote debugging and connect via ChromeDriver"""
+    """Start Brave with remote debugging and connect via regular ChromeDriver"""
     
-    print("CHROME BROWSER SETUP")
+    print("BRAVE BROWSER SETUP")
     print("=" * 50)
     
     try:
@@ -239,67 +242,105 @@ def setup_chrome_driver():
         os.system("pkill -f 'chrome' 2>/dev/null")
         time.sleep(2)
         
-        # Step 2: Start Chrome with remote debugging (works best for avoiding 403 errors)
-        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        # Step 2: Start Brave with remote debugging (ONLY method that avoids 403)
+        brave_path = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
         
-        if not os.path.exists(chrome_path):
-            raise Exception("Google Chrome not found. Please install Chrome or update the path.")
+        if not os.path.exists(brave_path):
+            raise Exception("Brave Browser not found. Please install Brave Browser for 403 protection.")
         
-        print("Step 2: Starting Chrome with remote debugging...")
-        browser_command = f'"{chrome_path}" --remote-debugging-port=9222 --disable-web-security --user-data-dir=/tmp/chrome_debug > /dev/null 2>&1 &'
-        os.system(browser_command)
-        time.sleep(3)  # Give Chrome time to start
+        print("Step 2: Starting Brave locally (clean instance)...")
         
-        # Step 3: Connect via ChromeDriver
-        print("Step 3: Connecting to Chrome via ChromeDriver...")
+        # Clean up any existing debug directory
+        if os.path.exists("/tmp/brave_clean"):
+            shutil.rmtree("/tmp/brave_clean", ignore_errors=True)
+        
+        # Start Brave as clean as possible - like a user opened it
+        brave_args = [
+            brave_path,
+            "--remote-debugging-port=9222",
+            "--user-data-dir=/tmp/brave_clean"
+            # NO other flags - completely clean like manual usage
+        ]
+        
+        try:
+            subprocess.Popen(brave_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✓ Clean Brave instance started")
+        except Exception as e:
+            raise Exception(f"Failed to start Brave: {str(e)}")
+        
+        # Wait for Brave to be ready (check remote debugging port)
+        print("Waiting for Brave to initialize...")
+        max_attempts = 10
+        for attempt in range(max_attempts):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', 9222))
+                sock.close()
+                if result == 0:
+                    print("✓ Brave remote debugging ready")
+                    break
+            except:
+                pass
+            
+            if attempt == max_attempts - 1:
+                raise Exception("Brave failed to start remote debugging within 10 seconds")
+            
+            time.sleep(1)
+            print(f"  Attempt {attempt + 1}/{max_attempts}...")
+        
+        # Step 3: Connect via REGULAR ChromeDriver (not undetected)
+        print("Step 3: Connecting to Brave via ChromeDriver...")
         
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
         
-        # Fix ChromeDriver path issue on M1 Macs
+        # Only use compatible options for this ChromeDriver version
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-extensions")
+        
+        # Get ChromeDriver path and fix M1 Mac issues
         driver_path = ChromeDriverManager().install()
         
-        # Check if the path points to the wrong file (M1 Mac issue)
         if "THIRD_PARTY_NOTICES" in driver_path:
             driver_dir = os.path.dirname(driver_path)
             actual_driver = os.path.join(driver_dir, "chromedriver")
-            
-            if os.path.exists(actual_driver) and os.access(actual_driver, os.X_OK):
-                driver_path = actual_driver
-                print("✓ Fixed ChromeDriver path for M1 Mac")
-            else:
-                raise Exception(f"Could not find executable chromedriver at {actual_driver}")
+            driver_path = actual_driver
         
+        if not os.path.exists(driver_path):
+            raise Exception(f"ChromeDriver not found at {driver_path}")
+        
+        if not os.access(driver_path, os.X_OK):
+            print("✓ Fixing ChromeDriver permissions...")
+            os.chmod(driver_path, 0o755)
+        
+        # Use regular ChromeDriver with Brave remote debugging
         service = ChromeService(driver_path)
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        print("✓ Successfully connected to Chrome!")
         
-        # Step 4: Test connection and navigate to EMR
-        print("Step 4: Testing connection to EMR...")
-        driver.get("https://well-kerrisdale.kai-oscar.com/oscar")
-        time.sleep(3)
+        print("✓ Connected to Brave via ChromeDriver")
         
-        # Check connection status
-        current_url = driver.current_url
-        print(f"Connected to: {current_url}")
+        # Set timeouts to prevent hanging
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
         
-        if "oscar" in current_url:
-            print("✓ Successfully connected to EMR system!")
-        else:
-            print("⚠ Connection established but may need manual login")
+        # Hide webdriver property for additional stealth
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        print("✓ Clean local Brave ready!")
         
         return driver
         
     except Exception as e:
-        print(f"✗ Chrome setup failed: {str(e)}")
+        print(f"✗ Brave browser setup failed: {str(e)}")
         print("\nMANUAL SETUP INSTRUCTIONS:")
         print("1. Close all browsers")
-        print("2. Run this command in Terminal:")
-        print('   /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --disable-web-security --user-data-dir=/tmp/chrome_debug')
-        print("3. Navigate to https://well-kerrisdale.kai-oscar.com/oscar and login")
-        print("4. Restart this bot")
+        print("2. Install Brave Browser if not installed")
+        print("3. Try running the bot again")
+        print("   Or manually start Brave with:")
+        print('   /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --remote-debugging-port=9222 --user-data-dir=/tmp/brave_clean')
         
-        raise WebDriverException(f"Chrome setup failed: {str(e)}")
+        raise WebDriverException(f"Brave setup failed: {str(e)}")
 
 def ping_dasrecord(message):
     try:
@@ -313,85 +354,206 @@ def ping_dasrecord(message):
         print(f"An error occurred while sending message to DAS Record: {e}")
 
 def login_to_oscar(driver):
-    """Handle EMR login and navigate to provider schedule"""
+    """Handle EMR login and navigate to provider schedule automatically"""
     
     print("\n" + "="*50)
     print("EMR LOGIN & NAVIGATION")
     print("="*50)
     
     try:
+        # Navigate to the EMR login page
+        print("🌐 Navigating to EMR login page...")
+        emr_url = "https://well-kerrisdale.kai-oscar.com/oscar"
+        
+        # Set shorter timeout for this connection test
+        original_timeout = 30
+        driver.set_page_load_timeout(15)  # Shorter timeout to prevent hanging
+        
+        max_attempts = 3
+        connected = False
+        
+        for attempt in range(max_attempts):
+            try:
+                print(f"  Connection attempt {attempt + 1}/{max_attempts}...")
+                
+                driver.get(emr_url)
+                
+                # Wait for page to load
+                WebDriverWait(driver, 10).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+                
+                current_url = driver.current_url
+                print(f"✓ Connected to: {current_url}")
+                connected = True
+                break
+                
+            except Exception as e:
+                print(f"  Attempt {attempt + 1} failed: {str(e)[:100]}...")
+                
+                if attempt == max_attempts - 1:
+                    print("❌ EMR website appears to be down or very slow")
+                    print("Please try again later or check EMR site status")
+                    return False
+                else:
+                    time.sleep(2)  # Wait before retry
+        
+        # Restore normal timeout
+        driver.set_page_load_timeout(original_timeout)
+        
+        if not connected:
+            return False
+        
+        # Check current page status
         current_url = driver.current_url
-        page_source = driver.page_source.lower()
+        page_source = driver.page_source.lower() if driver.page_source else ""
         
         print(f"Current URL: {current_url}")
         
-        # Check if already on provider schedule page (fully logged in)
+        # Check if already on provider schedule page (already logged in)
         if "providercontrol" in current_url and "provider" in current_url:
-            print("✓ Already on provider schedule page - ready to go!")
+            print("✓ Already logged in and on provider schedule!")
             return True
-            
-        # Check if logged into EMR but need to navigate to schedule
-        elif "oscar" in current_url and ("login" not in current_url.lower()):
-            print("✓ Logged into EMR - navigating to provider schedule...")
-            
+        
         # Check if need to login
-        elif any(indicator in page_source for indicator in ["username", "password", "login", "sign in"]):
-            print("⚠ Login required")
+        if any(indicator in page_source for indicator in ["username", "password", "login", "sign in"]):
+            print("🔐 Login form detected - attempting automatic login...")
             
-            # Try automatic login with environment variables
+            # Get credentials from environment
             username = os.getenv('OSCAR_USERNAME')
             password = os.getenv('OSCAR_PASSWORD')
             
-            if username and password:
-                print("Attempting automatic login...")
-                try:
-                    # Simple login attempt - try standard field names
-                    username_field = driver.find_element(By.NAME, "username")
-                    password_field = driver.find_element(By.NAME, "password")
-                    
-                    username_field.clear()
-                    username_field.send_keys(username)
-                    password_field.clear()
-                    password_field.send_keys(password)
-                    
-                    # Try to find and click login button
-                    login_button = driver.find_element(By.XPATH, "//input[@type='submit'] | //button[@type='submit']")
+            if not username or not password:
+                print("❌ No credentials found in environment variables")
+                return False
+                
+            try:
+                # Find username field
+                username_field = None
+                username_selectors = [
+                    "input[name='username']", "input[name='user']", "input[name='login']",
+                    "input[id='username']", "input[id='user']", "input[type='text']:first-of-type"
+                ]
+                
+                for selector in username_selectors:
+                    try:
+                        username_field = driver.find_element(By.CSS_SELECTOR, selector)
+                        print(f"✓ Found username field: {selector}")
+                        break
+                    except:
+                        continue
+                
+                # Find password field
+                password_field = None
+                password_selectors = [
+                    "input[name='password']", "input[name='pass']", 
+                    "input[id='password']", "input[type='password']"
+                ]
+                
+                for selector in password_selectors:
+                    try:
+                        password_field = driver.find_element(By.CSS_SELECTOR, selector)
+                        print(f"✓ Found password field: {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not username_field or not password_field:
+                    print("❌ Could not find login form fields")
+                    return False
+                
+                # Enter credentials
+                print("🔑 Entering credentials...")
+                username_field.clear()
+                username_field.send_keys(username)
+                print("✓ Username entered")
+                
+                password_field.clear()
+                password_field.send_keys(password)
+                print("✓ Password entered")
+                
+                # Find and click login button
+                login_button = None
+                login_selectors = [
+                    "input[type='submit']", "button[type='submit']", 
+                    "input[value*='Login']", "input[value*='Sign']"
+                ]
+                
+                for selector in login_selectors:
+                    try:
+                        login_button = driver.find_element(By.CSS_SELECTOR, selector)
+                        print(f"✓ Found login button: {selector}")
+                        break
+                    except:
+                        continue
+                
+                if login_button:
                     login_button.click()
+                    print("✓ Login button clicked")
+                else:
+                    # Try submitting with Enter key
+                    password_field.send_keys(Keys.RETURN)
+                    print("✓ Login submitted with Enter key")
+                
+                # Wait for login to process
+                print("⏳ Waiting for login to process...")
+                time.sleep(5)
+                
+                # Check if login was successful
+                new_url = driver.current_url
+                print(f"After login URL: {new_url}")
+                
+                if new_url != current_url and "login" not in new_url.lower():
+                    print("✓ Login successful!")
+                else:
+                    print("❌ Login may have failed")
+                    return False
                     
-                    time.sleep(5)
-                    print("✓ Login submitted")
-                    
-                except Exception as login_error:
-                    print(f"Automatic login failed: {login_error}")
-                    print("Please login manually in the browser...")
-                    input("Press ENTER after you've logged in: ")
-            else:
-                print("No login credentials found in environment variables")
-                print("Please login manually in the browser...")
-                input("Press ENTER after you've logged in: ")
-        else:
-            print("⚠ Unexpected page state - please verify you're on the EMR site")
-            input("Press ENTER to continue: ")
+            except Exception as login_error:
+                print(f"❌ Login automation failed: {login_error}")
+                return False
         
         # Navigate to provider schedule for today's date
-        print("Navigating to today's provider schedule...")
+        print("🗓️ Navigating to today's provider schedule...")
         billing_date = f"https://well-kerrisdale.kai-oscar.com/oscar/provider/providercontrol.jsp?year={billing_year}&month={billing_month}&day={billing_day}&view=0&displaymode=day&dboperation=searchappointmentday&viewall=0"
-        driver.get(billing_date)
-        time.sleep(3)
         
-        # Verify we made it to the schedule
-        final_url = driver.current_url
-        if "providercontrol" in final_url:
-            print("✓ Successfully navigated to provider schedule!")
-            return True
-        else:
-            print("⚠ May not be on the correct provider schedule page")
-            print(f"Current URL: {final_url}")
-            return True  # Continue anyway
+        # Use shorter timeout for navigation
+        driver.set_page_load_timeout(15)
+        
+        max_nav_attempts = 2
+        for nav_attempt in range(max_nav_attempts):
+            try:
+                print(f"  Navigation attempt {nav_attempt + 1}/{max_nav_attempts}...")
+                
+                driver.get(billing_date)
+                time.sleep(3)
+                
+                final_url = driver.current_url
+                print(f"Final URL: {final_url}")
+                
+                if "providercontrol" in final_url:
+                    print("✓ Successfully navigated to provider schedule!")
+                    # Restore normal timeout
+                    driver.set_page_load_timeout(original_timeout)
+                    return True
+                else:
+                    print("⚠️ May not be on the correct provider schedule page")
+                    # Restore normal timeout
+                    driver.set_page_load_timeout(original_timeout)
+                    return True  # Continue anyway
+                    
+            except Exception as nav_error:
+                print(f"  Navigation attempt {nav_attempt + 1} failed: {str(nav_error)[:100]}...")
+                if nav_attempt == max_nav_attempts - 1:
+                    print("❌ Navigation timeout - EMR may be slow")
+                    # Restore normal timeout
+                    driver.set_page_load_timeout(original_timeout)
+                    return False
+                else:
+                    time.sleep(2)  # Wait before retry
             
     except Exception as e:
-        print(f"Login/navigation error: {str(e)}")
-        print("Please ensure you're logged into the EMR and on the provider schedule")
+        print(f"❌ Login/navigation error: {str(e)}")
         return False
 
 def navigate_to_billing_date(driver):
