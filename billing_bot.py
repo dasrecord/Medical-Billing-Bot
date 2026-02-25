@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import StaleElementReferenceException, NoSuchWindowException, WebDriverException, ElementClickInterceptedException, NoSuchElementException
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
@@ -21,6 +22,8 @@ import re
 import datetime
 import random
 import json
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 def debug_page_state(driver, reason="Debug"):
     """Save screenshot and page info for debugging"""
@@ -174,6 +177,9 @@ icd9_logger.addHandler(file_handler)
 
 # Prevent propagation to root logger to avoid other logs
 icd9_logger.propagate = False
+
+# EXPORT MODE FLAG - Set to True to export to Excel instead of submitting billing
+export_mode = True  # Set to True to enable Excel export and appointment status update
 
 # Set the billing date
 billing_year = str(datetime.date.today().year)
@@ -341,6 +347,184 @@ def setup_chrome_driver():
         print('   /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --remote-debugging-port=9222 --user-data-dir=/tmp/brave_clean')
         
         raise WebDriverException(f"Brave setup failed: {str(e)}")
+
+def ping_dasrecord(message):
+    """Send status updates to DasRecord or other systems"""
+    try:
+        # Implementation for external status updates if needed
+        pass
+    except:
+        pass
+
+def export_to_excel(billing_data):
+    """Export billing data to Excel file with specified columns"""
+    excel_filename = f"{billing_year}{billing_month.zfill(2)}{billing_day.zfill(2)}_billing_export.xlsx"
+    
+    # Column headers in the required order
+    headers = [
+        "date_of_birth", "last_name", "first_name", "PHN", 
+        "date_of_service", "doc_last_name", "doc_first_name", "billing_item", "diagnosis", 
+        "location", "province"
+    ]
+    
+    try:
+        # Try to load existing workbook
+        if os.path.exists(excel_filename):
+            workbook = load_workbook(excel_filename)
+            sheet = workbook.active
+        else:
+            # Create new workbook with headers
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Billing Data"
+            # Add headers
+            for col_num, header in enumerate(headers, 1):
+                sheet.cell(row=1, column=col_num, value=header)
+        
+        # Find the next empty row
+        next_row = sheet.max_row + 1
+        
+        # Add the billing data
+        row_data = [
+            billing_data.get("date_of_birth", ""),
+            billing_data.get("last_name", ""), 
+            billing_data.get("first_name", ""),
+            billing_data.get("PHN", ""),
+            billing_data.get("date_of_service", ""),
+            billing_data.get("doc_last_name", ""),  # Hardcoded as requested
+            billing_data.get("doc_first_name", ""),  # Hardcoded as requested
+            billing_data.get("billing_item", ""),
+            billing_data.get("diagnosis", ""),
+            "V",  # Hardcoded as requested
+            billing_data.get("province", "")
+        ]
+        
+        # Write data to the row
+        for col_num, value in enumerate(row_data, 1):
+            sheet.cell(row=next_row, column=col_num, value=value)
+        
+        # Save the workbook
+        workbook.save(excel_filename)
+        print(f"✅ Exported billing data to {excel_filename}, row {next_row}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error exporting to Excel: {e}")
+        return False
+
+def update_appointment_status(driver, day_sheet_window):
+    """Update appointment status to 'B' (Billed) via appointment link"""
+    try:
+        print("🔄 Updating appointment status to 'B'...")
+        
+        # Debug: Check current window state
+        print(f"🐛 Current window count: {len(driver.window_handles)}")
+        print(f"🐛 Target day sheet window: {day_sheet_window}")
+        print(f"🐛 Current window: {driver.current_window_handle}")
+        
+        # Ensure we're in the day sheet window
+        if day_sheet_window in driver.window_handles:
+            driver.switch_to.window(day_sheet_window)
+            print(f"✅ Switched to day sheet window: {driver.current_url}")
+        else:
+            print("⚠️ Day sheet window no longer exists, using first available window")
+            driver.switch_to.window(driver.window_handles[0])
+            day_sheet_window = driver.window_handles[0]
+        
+        # Find and click the appointment link (a.apptLink) 
+        # Debug: Check how many appointment links exist
+        appt_links = driver.find_elements(By.CSS_SELECTOR, "a.apptLink")
+        print(f"🐛 Found {len(appt_links)} appointment links on page")
+        
+        if len(appt_links) == 0:
+            print("❌ No appointment links found")
+            debug_page_state(driver, "no_appt_links")
+            return False
+        
+        # Use the first clickable appointment link
+        appt_link = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.apptLink"))
+        )
+        
+        # Debug: Show link details before clicking
+        try:
+            link_text = appt_link.text.strip()
+            link_href = appt_link.get_attribute("href")
+            print(f"🐛 Clicking appointment link - Text: '{link_text}', href: {link_href}")
+        except:
+            print("🐛 Could not get appointment link details")
+        
+        appt_link.click()
+        print("✅ Clicked appointment link")
+        
+        # Wait for new window to open  
+        WebDriverWait(driver, 10).until(lambda d: len(d.window_handles) > 1)
+        
+        # Switch to the new appointment window
+        for handle in driver.window_handles:
+            if handle != day_sheet_window:
+                driver.switch_to.window(handle)
+                break
+        
+        print("📝 Opened appointment details window")
+        
+        # Wait for page to load and find the status select element
+        status_select_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "status"))
+        )
+        
+        # Create Select object and choose option 'B'
+        status_select = Select(status_select_element)
+        status_select.select_by_value("B")
+        print("✅ Changed status to 'B' (Billed)")
+        
+        # Find and click the update button (simplified since structure is consistent)
+        print("🔍 Looking for Update Appt button...")
+        try:
+            update_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[value='Update Appt']"))
+            )
+            print("✅ Found Update Appt button")
+        except:
+            print("❌ Could not find Update Appt button")
+            debug_page_state(driver, "update_button_not_found")
+            return False
+        
+        # Click the update button
+        print("🔄 Clicking Update Appt button...")
+        try:
+            # Scroll to button and click
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", update_button)
+            time.sleep(0.5)
+            update_button.click()
+            print("✅ Update Appt button clicked successfully")
+        except Exception as click_error:
+            print(f"⚠️ Normal click failed, trying JavaScript: {click_error}")
+            try:
+                driver.execute_script("arguments[0].click();", update_button)
+                print("✅ Update Appt button clicked via JavaScript")
+            except Exception as js_error:
+                print(f"❌ Button click failed: {js_error}")
+                return False
+        
+        # Wait a moment for update to process
+        time.sleep(2)
+        
+        # Close the appointment window and return to day sheet
+        driver.close()
+        driver.switch_to.window(day_sheet_window)
+        print("✅ Updated appointment status and returned to day sheet")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error updating appointment status: {e}")
+        # Try to get back to day sheet window
+        try:
+            driver.switch_to.window(day_sheet_window)
+        except:
+            pass
+        return False
 
 def ping_dasrecord(message):
     try:
@@ -596,6 +780,133 @@ def get_appointments(driver):
         # If no appointments found, return empty list
         print(f"⚠️  No appointments found or appointments not loaded yet: {e}")
         return []
+
+def extract_patient_info(driver):
+    """Extract patient information from the billing form page using exact table structure"""
+    patient_info = {}
+    
+    try:
+        print("🔍 Extracting patient information from billing form table structure...")
+        
+        # Find the Patient Information table (first table with "Patient Information" header)
+        patient_table_xpath = "//td[contains(text(), 'Patient Information')]/ancestor::table[1]"
+        patient_table = driver.find_element(By.XPATH, patient_table_xpath)
+        
+        # Extract Patient Name (2nd cell, 1st data row) - Format: "LASTNAME,FIRSTNAME"
+        try:
+            patient_name_xpath = ".//tr[2]/td[2]"  # First data row, second cell
+            patient_name_element = patient_table.find_element(By.XPATH, patient_name_xpath)
+            patient_name = patient_name_element.text.strip()
+            
+            if ',' in patient_name:
+                parts = patient_name.split(',')
+                patient_info["last_name"] = parts[0].strip()
+                patient_info["first_name"] = parts[1].strip() if len(parts) > 1 else ""
+            else:
+                # If no comma, assume it's all one name
+                patient_info["last_name"] = patient_name
+                patient_info["first_name"] = ""
+            
+            print(f"✅ Found Patient Name: {patient_info['last_name']}, {patient_info['first_name']}")
+        except Exception as e:
+            print(f"⚠️ Could not extract patient name: {e}")
+            patient_info["last_name"] = ""
+            patient_info["first_name"] = ""
+        
+        # Extract Patient PHN (4th cell, 1st data row)
+        try:
+            phn_xpath = ".//tr[2]/td[4]"  # First data row, fourth cell
+            phn_element = patient_table.find_element(By.XPATH, phn_xpath)
+            patient_info["phn"] = phn_element.text.strip()
+            print(f"✅ Found PHN: {patient_info['phn']}")
+        except Exception as e:
+            print(f"⚠️ Could not extract PHN: {e}")
+            patient_info["phn"] = ""
+        
+        # Extract Date of Birth (2nd cell, 2nd data row) - Format: YYYYMMDD
+        try:
+            dob_xpath = ".//tr[3]/td[2]"  # Second data row, second cell
+            dob_element = patient_table.find_element(By.XPATH, dob_xpath)
+            dob_raw = dob_element.text.strip()
+            
+            # Convert YYYYMMDD to YYYY-MM-DD
+            if len(dob_raw) == 8 and dob_raw.isdigit():
+                formatted_dob = f"{dob_raw[:4]}-{dob_raw[4:6]}-{dob_raw[6:8]}"
+                patient_info["date_of_birth"] = formatted_dob
+                print(f"✅ Found DOB: {patient_info['date_of_birth']}")
+            else:
+                patient_info["date_of_birth"] = dob_raw
+                print(f"✅ Found DOB (raw): {patient_info['date_of_birth']}")
+        except Exception as e:
+            print(f"⚠️ Could not extract DOB: {e}")
+            patient_info["date_of_birth"] = ""
+        
+        # Extract Province/Health Card Type (6th cell, 1st data row)
+        try:
+            province_xpath = ".//tr[2]/td[6]"  # First data row, sixth cell
+            province_element = patient_table.find_element(By.XPATH, province_xpath)
+            patient_info["province"] = province_element.text.strip()
+            print(f"✅ Found Province: {patient_info['province']}")
+        except Exception as e:
+            print(f"⚠️ Could not extract province: {e}")
+            patient_info["province"] = "BC"  # Default
+        
+        # Set hardcoded location
+        patient_info["location"] = "V"
+        print(f"✅ Set Location: {patient_info['location']}")
+        
+        # Extract billing/service code from the service table
+        try:
+            # Find the service code table (contains "Service Code" header)
+            service_table_xpath = "//td[contains(text(), 'Service Code')]/ancestor::table[1]"
+            service_table = driver.find_element(By.XPATH, service_table_xpath)
+            
+            # Get the service code from first data row, first cell
+            service_code_xpath = ".//tr[2]/td[1]"  # First data row, first cell
+            service_code_element = service_table.find_element(By.XPATH, service_code_xpath)
+            patient_info["billing_code"] = service_code_element.text.strip()
+            print(f"✅ Found Billing Code: {patient_info['billing_code']}")
+        except Exception as e:
+            print(f"⚠️ Could not extract billing code: {e}")
+            patient_info["billing_code"] = "A001A"  # Fallback default
+        
+        print(f"📊 Successfully extracted patient info: {patient_info}")
+        return patient_info
+        
+    except Exception as e:
+        print(f"❌ Error extracting patient info from table structure: {e}")
+        return {
+            "date_of_birth": "",
+            "last_name": "",
+            "first_name": "",
+            "phn": "",
+            "location": "V",
+            "province": "BC",
+            "billing_code": "A001A"  # Fallback default
+        }
+
+def format_date(date_str):
+    """Convert date to YYYY-MM-DD format"""
+    try:
+        # Try different date formats
+        formats = [
+            "%Y-%m-%d",  # Already correct format
+            "%m/%d/%Y",  # MM/DD/YYYY
+            "%d/%m/%Y",  # DD/MM/YYYY
+            "%m-%d-%Y",  # MM-DD-YYYY
+            "%d-%m-%Y"   # DD-MM-YYYY
+        ]
+        
+        for fmt in formats:
+            try:
+                date_obj = datetime.datetime.strptime(date_str, fmt)
+                return date_obj.strftime("%Y-%m-%d")
+            except:
+                continue
+                
+        return date_str  # Return as-is if no format matches
+    except:
+        return date_str
 
 def process_appointment(driver, appointment, day_sheet_window):
     global cumulative_end_time
@@ -1100,6 +1411,79 @@ def process_appointment(driver, appointment, day_sheet_window):
     )
     continue_button.click()
 
+    # Export mode logic - happens in the final billing confirmation window
+    if export_mode:
+        print("📊 Export mode enabled - extracting patient information...")
+        try:
+            # Wait for the final billing page to load (where patient info table is)
+            WebDriverWait(driver, 10).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+            
+            # Extract patient information from the final billing confirmation page
+            patient_data = extract_patient_info(driver)
+            
+            # Create billing data dictionary
+            billing_data = {
+                "date_of_birth": patient_data.get("date_of_birth", ""),
+                "last_name": patient_data.get("last_name", ""),  # Match Excel header
+                "first_name": patient_data.get("first_name", ""),  # Match Excel header
+                "PHN": patient_data.get("phn", ""),
+                "date_of_service": f"{billing_year}-{billing_month.zfill(2)}-{billing_day.zfill(2)}",
+                "doc_last_name": "Das",  # Hardcoded
+                "doc_first_name": "Prasenjit",  # Hardcoded
+                "billing_item": patient_data.get("billing_code", ""),  # Match Excel header
+                "diagnosis": icd9_code,  # Match Excel header
+                "location": "V",  # Hardcoded location
+                "province": patient_data.get("province", "BC")  # Default to BC
+            }
+            
+            # Export to Excel
+            export_success = export_to_excel(billing_data)
+            
+            if export_success:
+                print("✅ Successfully exported to Excel")
+                
+                # Click Cancel instead of Save Bill
+                try:
+                    cancel_button = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//*[@value='Cancel' or @value='cancel' or contains(text(), 'Cancel')]"))
+                    )
+                    cancel_button.click()
+                    print("✅ Clicked Cancel button (export mode)")
+                except:
+                    # If Cancel button not found, try to close window
+                    print("⚠️ Cancel button not found, closing window")
+                    driver.close()
+                
+                # Wait for billing window to close, then switch back to day sheet
+                time.sleep(2)  # Give time for window to close
+                
+                # Ensure we're back on day sheet window
+                if len(driver.window_handles) > 0:
+                    driver.switch_to.window(day_sheet_window)
+                    print("✅ Switched back to day sheet window")
+                    
+                    # Update appointment status
+                    print("🔄 Starting appointment status update...")
+                    update_success = update_appointment_status(driver, day_sheet_window)
+                    
+                    if update_success:
+                        print("✅ Appointment status updated successfully")
+                    else:
+                        print("❌ Failed to update appointment status")
+                else:
+                    print("❌ No window handles available")
+                
+                return  # Exit function for export mode
+                
+            else:
+                print("❌ Export failed, continuing with normal processing")
+                
+        except Exception as export_error:
+            print(f"❌ Export mode error: {export_error}")
+            print("Falling back to normal processing")
+
     try:
         save_bill = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//*[@value='Save Bill']"))
@@ -1194,6 +1578,11 @@ def main():
     print("\n" + "="*50)
     print("MEDICAL BILLING BOT - STARTING")
     print("="*50)
+    print(f"🔧 Export Mode: {'ENABLED' if export_mode else 'DISABLED'}")
+    if export_mode:
+        print("📊 Mode: Export to Excel + Update Status to 'B'")
+    else:
+        print("📋 Mode: Normal Billing Submission")
     print("Chrome browser opened with remote debugging")
     print("If login is required, please complete it in the browser")
     
