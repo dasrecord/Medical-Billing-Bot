@@ -110,6 +110,7 @@ def safe_close_extra_windows(driver, main_window):
 icd9_substitutes = {
     "V586": "V68",
     "5589": "558",
+    "7021":"702",
     "7029": "702",
     "6499": "V724",
     "4860": "486",
@@ -122,6 +123,9 @@ icd9_substitutes = {
     "3391":"7840",
     "4600":"460",
     "4620":"462",
+    "30183":"301",
+    "04112": "041",
+    "7024": "702",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
@@ -179,12 +183,12 @@ icd9_logger.addHandler(file_handler)
 icd9_logger.propagate = False
 
 # EXPORT MODE FLAG - Set to True to export to Excel instead of submitting billing
-export_mode = True  # Set to True to enable Excel export and appointment status update
+export_mode = False
 
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day)
+billing_day = str(datetime.date.today().day - 1)  # Default to yesterday's date for billing
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -412,50 +416,56 @@ def export_to_excel(billing_data):
         print(f"❌ Error exporting to Excel: {e}")
         return False
 
-def update_appointment_status(driver, day_sheet_window):
-    """Update appointment status to 'B' (Billed) via appointment link"""
+def update_appointment_status(driver, day_sheet_window, appointment_element=None):
+    """Update appointment status to 'B' (Billed) via the specific appointment's link"""
     try:
         print("🔄 Updating appointment status to 'B'...")
-        
-        # Debug: Check current window state
-        print(f"🐛 Current window count: {len(driver.window_handles)}")
-        print(f"🐛 Target day sheet window: {day_sheet_window}")
-        print(f"🐛 Current window: {driver.current_window_handle}")
         
         # Ensure we're in the day sheet window
         if day_sheet_window in driver.window_handles:
             driver.switch_to.window(day_sheet_window)
-            print(f"✅ Switched to day sheet window: {driver.current_url}")
         else:
-            print("⚠️ Day sheet window no longer exists, using first available window")
             driver.switch_to.window(driver.window_handles[0])
             day_sheet_window = driver.window_handles[0]
         
-        # Find and click the appointment link (a.apptLink) 
-        # Debug: Check how many appointment links exist
-        appt_links = driver.find_elements(By.CSS_SELECTOR, "a.apptLink")
-        print(f"🐛 Found {len(appt_links)} appointment links on page")
+        # Find the appointment link WITHIN the specific appointment element (not the entire page)
+        appt_link = None
         
-        if len(appt_links) == 0:
-            print("❌ No appointment links found")
-            debug_page_state(driver, "no_appt_links")
-            return False
+        # Try to use the provided appointment element first
+        if appointment_element:
+            try:
+                appt_link = appointment_element.find_element(By.CSS_SELECTOR, "a.apptLink")
+                link_text = appt_link.text.strip()
+                print(f"🎯 Found appointment link for: '{link_text}'")
+            except (StaleElementReferenceException, NoSuchElementException):
+                print("⚠️ Appointment element is stale or doesn't have apptLink, refreshing...")
+                appt_link = None
         
-        # Use the first clickable appointment link
-        appt_link = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.apptLink"))
-        )
+        # Fallback: if no element provided or element is stale, get first appointment link
+        if not appt_link:
+            try:
+                appt_link = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.apptLink"))
+                )
+                print("🎯 Found appointment link (fallback search)")
+            except:
+                print("❌ Could not find any appointment link")
+                return False
         
-        # Debug: Show link details before clicking
+        # Scroll and click the specific appointment link
         try:
-            link_text = appt_link.text.strip()
-            link_href = appt_link.get_attribute("href")
-            print(f"🐛 Clicking appointment link - Text: '{link_text}', href: {link_href}")
-        except:
-            print("🐛 Could not get appointment link details")
-        
-        appt_link.click()
-        print("✅ Clicked appointment link")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", appt_link)
+            time.sleep(0.5)
+            appt_link.click()
+            print("✅ Clicked appointment link")
+        except Exception as click_error:
+            print(f"⚠️ Normal click failed, trying JavaScript: {click_error}")
+            try:
+                driver.execute_script("arguments[0].click();", appt_link)
+                print("✅ Clicked appointment link via JavaScript")
+            except Exception as js_error:
+                print(f"❌ Click failed: {js_error}")
+                return False
         
         # Wait for new window to open  
         WebDriverWait(driver, 10).until(lambda d: len(d.window_handles) > 1)
@@ -1461,12 +1471,16 @@ def process_appointment(driver, appointment, day_sheet_window):
                 
                 # Ensure we're back on day sheet window
                 if len(driver.window_handles) > 0:
-                    driver.switch_to.window(day_sheet_window)
-                    print("✅ Switched back to day sheet window")
-                    
-                    # Update appointment status
-                    print("🔄 Starting appointment status update...")
-                    update_success = update_appointment_status(driver, day_sheet_window)
+                    # Refresh appointment element to avoid stale reference
+                    appointments = get_appointments(driver)
+                    if appointments:
+                        driver.switch_to.window(day_sheet_window)
+                        print("✅ Switched back to day sheet window")
+                        
+                        # Update appointment status - use refreshed appointment list
+                        print("🔄 Starting appointment status update...")
+                        # Find the current appointment in the refreshed list
+                        update_success = update_appointment_status(driver, day_sheet_window, appointment)
                     
                     if update_success:
                         print("✅ Appointment status updated successfully")
