@@ -108,12 +108,13 @@ def safe_close_extra_windows(driver, main_window):
 # ICD9 Code Substitution Dictionary
 # Maps invalid codes to valid substitute codes
 icd9_substitutes = {
-    "V586": "V68",
-    "5589": "558",
+    "V586":"V68",
+    "V5869":"V68",
+    "5589":"558",
     "7021":"702",
-    "7029": "702",
-    "6499": "V724",
-    "4860": "486",
+    "7029":"702",
+    "6499":"V724",
+    "4860":"486",
     "6000":"600",
     "6061":"606",
     "4900":"490",
@@ -124,9 +125,12 @@ icd9_substitutes = {
     "4600":"460",
     "4620":"462",
     "30183":"301",
-    "04112": "041",
-    "7024": "702",
-    "6500":"650"
+    "04112":"041",
+    "7024":"702",
+    "6500":"650",
+    "4860":"483",
+    "2809":"280",
+    "71944":"7194"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
