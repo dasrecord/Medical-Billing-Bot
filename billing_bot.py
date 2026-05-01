@@ -27,6 +27,10 @@ import json
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
+# Import configuration and ICD9 codes
+from config import *
+from icd9_codes import icd9_substitutes
+
 def debug_page_state(driver, reason="Debug"):
     """Save screenshot and page info for debugging"""
     try:
@@ -107,41 +111,6 @@ def safe_close_extra_windows(driver, main_window):
     except:
         return False
 
-# ICD9 Code Substitution Dictionary
-# Maps invalid codes to valid substitute codes
-icd9_substitutes = {
-    "V586":"V68",
-    "V5869":"V68",
-    "V2621":"V262",
-    "5589":"558",
-    "7021":"702",
-    "7029":"702",
-    "6499":"V724",
-    "4860":"486",
-    "6000":"600",
-    "6061":"606",
-    "4900":"490",
-    "6901":"690",
-    "6840":"684",
-    "6901":"690",
-    "3391":"7840",
-    "4600":"460",
-    "4620":"462",
-    "4630":"463",
-    "30183":"301",
-    "04112":"041",
-    "7024":"702",
-    "6500":"650",
-    "4860":"483",
-    "2809":"280",
-    "71944":"7194",
-    "3272":"3074", 
-    "M545":"724",
-    "7000":"700"
-    # Add more substitutions as needed based on failed_icd9_codes.log
-    # Format: "invalid_code": "valid_substitute"
-}
-
 # Advanced Anti-Detection Configuration
 class BrowserFingerprint:
     """Generate realistic browser fingerprints to avoid detection"""
@@ -193,33 +162,6 @@ icd9_logger.addHandler(file_handler)
 
 # Prevent propagation to root logger to avoid other logs
 icd9_logger.propagate = False
-
-# EXPORT MODE FLAG - Set to True to export to Excel instead of submitting billing
-export_mode = False
-
-# Set the billing date
-billing_year = str(datetime.date.today().year)
-billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day-1)
-
-# standard_appointment_length is 5 minutes
-standard_appointment_length = 5
-
-# counseling_appointment_length is 20 minutes
-counseling_appointment_length = 20
-
-# set delay times in seconds - optimized for speed
-short_delay = 1
-long_delay = 3
-
-# Set the number of runs - will be dynamically set based on appointments found
-runs = None  # Will be set automatically based on appointment count
-
-# set safe_mode (default = True)
-safe_mode = False
-
-# set headless mode (default = False) - MUST be False for EMR compatibility
-headless_mode = False
 
 # webdriver options
 options = webdriver.ChromeOptions()
