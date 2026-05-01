@@ -110,6 +110,7 @@ def safe_close_extra_windows(driver, main_window):
 icd9_substitutes = {
     "V586":"V68",
     "V5869":"V68",
+    "V2621":"V262",
     "5589":"558",
     "7021":"702",
     "7029":"702",
@@ -124,13 +125,17 @@ icd9_substitutes = {
     "3391":"7840",
     "4600":"460",
     "4620":"462",
+    "4630":"463",
     "30183":"301",
     "04112":"041",
     "7024":"702",
     "6500":"650",
     "4860":"483",
     "2809":"280",
-    "71944":"7194"
+    "71944":"7194",
+    "3272":"3074", 
+    "M545":"724",
+    "7000":"700"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
@@ -193,7 +198,7 @@ export_mode = False
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day)
+billing_day = str(datetime.date.today().day-1)
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
