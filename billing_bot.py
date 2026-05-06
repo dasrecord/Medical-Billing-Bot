@@ -1,10 +1,12 @@
 import time
 import datetime
 import os
+import sys
 import logging
 import subprocess
 import socket
 import shutil
+import tempfile
 from dotenv import load_dotenv
 import undetected_chromedriver as uc
 from selenium import webdriver
@@ -257,28 +259,43 @@ def setup_chrome_driver():
     try:
         # Step 1: Kill any existing browser processes to start fresh
         print("Step 1: Closing any existing browsers...")
-        os.system("pkill -f 'Google Chrome' 2>/dev/null")
-        os.system("pkill -f 'Brave Browser' 2>/dev/null") 
-        os.system("pkill -f 'chrome' 2>/dev/null")
+        if sys.platform == "win32":
+            os.system("taskkill /F /IM chrome.exe /T >nul 2>&1")
+            os.system("taskkill /F /IM brave.exe /T >nul 2>&1")
+        else:
+            os.system("pkill -f 'Google Chrome' 2>/dev/null")
+            os.system("pkill -f 'Brave Browser' 2>/dev/null")
+            os.system("pkill -f 'chrome' 2>/dev/null")
         time.sleep(2)
         
         # Step 2: Start Brave with remote debugging (ONLY method that avoids 403)
-        brave_path = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+        if sys.platform == "win32":
+            brave_candidates = [
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+                r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+            ]
+            brave_path = next((p for p in brave_candidates if os.path.exists(p)), None)
+        else:
+            brave_path = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+            if not os.path.exists(brave_path):
+                brave_path = None
         
-        if not os.path.exists(brave_path):
+        if not brave_path:
             raise Exception("Brave Browser not found. Please install Brave Browser for 403 protection.")
         
         print("Step 2: Starting Brave locally (clean instance)...")
         
         # Clean up any existing debug directory
-        if os.path.exists("/tmp/brave_clean"):
-            shutil.rmtree("/tmp/brave_clean", ignore_errors=True)
+        brave_clean_dir = os.path.join(tempfile.gettempdir(), "brave_clean")
+        if os.path.exists(brave_clean_dir):
+            shutil.rmtree(brave_clean_dir, ignore_errors=True)
         
         # Start Brave as clean as possible - like a user opened it
         brave_args = [
             brave_path,
             "--remote-debugging-port=9222",
-            "--user-data-dir=/tmp/brave_clean"
+            f"--user-data-dir={brave_clean_dir}"
             # NO other flags - completely clean like manual usage
         ]
         
@@ -319,18 +336,19 @@ def setup_chrome_driver():
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument("--disable-extensions")
         
-        # Get ChromeDriver path and fix M1 Mac issues
+        # Get ChromeDriver path
         driver_path = ChromeDriverManager().install()
         
         if "THIRD_PARTY_NOTICES" in driver_path:
             driver_dir = os.path.dirname(driver_path)
-            actual_driver = os.path.join(driver_dir, "chromedriver")
+            chromedriver_name = "chromedriver.exe" if sys.platform == "win32" else "chromedriver"
+            actual_driver = os.path.join(driver_dir, chromedriver_name)
             driver_path = actual_driver
         
         if not os.path.exists(driver_path):
             raise Exception(f"ChromeDriver not found at {driver_path}")
         
-        if not os.access(driver_path, os.X_OK):
+        if sys.platform != "win32" and not os.access(driver_path, os.X_OK):
             print("✓ Fixing ChromeDriver permissions...")
             os.chmod(driver_path, 0o755)
         
@@ -358,7 +376,10 @@ def setup_chrome_driver():
         print("2. Install Brave Browser if not installed")
         print("3. Try running the bot again")
         print("   Or manually start Brave with:")
-        print('   /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --remote-debugging-port=9222 --user-data-dir=/tmp/brave_clean')
+        if sys.platform == "win32":
+            print(r'   "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe" --remote-debugging-port=9222 --user-data-dir=%TEMP%\brave_clean')
+        else:
+            print('   /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --remote-debugging-port=9222 --user-data-dir=/tmp/brave_clean')
         
         raise WebDriverException(f"Brave setup failed: {str(e)}")
 
