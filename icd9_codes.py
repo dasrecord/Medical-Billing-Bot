@@ -28,7 +28,8 @@ icd9_substitutes = {
     "71944":"7194",
     "3272":"3074", 
     "M545":"724",
-    "7000":"700"
+    "7000":"700",
+    "72885":"728"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }

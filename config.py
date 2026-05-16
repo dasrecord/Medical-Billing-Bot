@@ -2,7 +2,7 @@ import datetime
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day-1)
+billing_day = str(datetime.date.today().day)
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
