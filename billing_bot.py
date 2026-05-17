@@ -1499,7 +1499,11 @@ def process_appointments(driver, day_sheet_window):
     # Get initial appointments and set runs based on count
     appointments = get_appointments(driver)
     total_appointments = len(appointments)
-    print(f"Found {total_appointments} appointments. Processing each one...")
+    if runs is not None:
+        total_appointments = min(runs, total_appointments)
+        print(f"Found {len(appointments)} appointments. Processing {total_appointments} as set by runs...")
+    else:
+        print(f"Found {total_appointments} appointments. Processing each one...")
     
     processed_count = 0
     

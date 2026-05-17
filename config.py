@@ -14,8 +14,9 @@ counseling_appointment_length = 20
 short_delay = 1
 long_delay = 3
 
-# Set the number of runs - will be dynamically set based on appointments found
-runs = None  # Will be set automatically based on appointment count
+# Set the number of runs - default is None (process all appointments)
+runs = None 
+
 
 # set safe_mode (default = True)
 safe_mode = False
