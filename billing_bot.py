@@ -981,11 +981,11 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     if appointment_status in ["No Show","Billed/Verified","Billed/Signed", "Billed", "Cancelled"]:
         print(f"⏭️  Skipping - Status: {appointment_status}")
-        return
+        return False
 
     if "Track,Fast" in appointment.text:
         print("🏃 Fast track appointment. Skipping.")
-        return
+        return False
 
     print(f"📊 Processing appointment - Status: {appointment_status}")
 
@@ -1029,11 +1029,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         print("🔄 Normal click failed, trying JavaScript click...")
         driver.execute_script("arguments[0].click();", e_chart)
         print("✅ JavaScript click successful")
-    # Check browser connection before window operations
-    if not check_browser_connection(driver):
-        print("❌ Browser connection lost before window switching")
-        raise WebDriverException("Browser connection lost")
-    
+
     # Wait for new window to open
     WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 1)
     
@@ -1094,14 +1090,6 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     # Quick encounter window processing
     try:
-        # Wait for encounter window to fully load
-        time.sleep(0.3)  # Brief stabilization before readyState check
-        
-        # Wait for the page to be ready
-        WebDriverWait(driver, 10).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
-        )
-        
         # Debug: Print page information
         print(f"Encounter window URL: {driver.current_url}")
         print(f"Encounter window title: {driver.title}")
@@ -1122,54 +1110,38 @@ def process_appointment(driver, appointment, day_sheet_window):
             print("403 error detected")
             return
         
-        # Find Show All Notes button with improved detection
+        # Find Show All Notes button — try instant find first, short wait only as fallback
         show_all_notes = None
-        max_retries = 3
-        
-        # First check browser connection
-        if not check_browser_connection(driver):
-            print("Browser connection lost before finding Show All Notes button")
-            return
-        
-        for retry in range(max_retries):
+        selectors = [
+            "//input[@value='Show All Notes']",
+            "//*[text()='Show All Notes']",
+            "//*[contains(text(), 'Show All Notes')]",
+            "//button[contains(text(), 'Show All')]",
+            "//a[contains(text(), 'Show All')]",
+            "//*[contains(text(), 'Show All')]",
+        ]
+
+        # Pass 1: instant find_element (page is already loaded)
+        for selector in selectors:
             try:
-                print(f"Attempting to find Show All Notes button (attempt {retry + 1}/{max_retries})")
-                
-                # Brief stabilization
-                time.sleep(0.2)
-                
-                # Check connection on each retry
-                if not check_browser_connection(driver):
-                    print("Browser connection lost during retry")
-                    return
-                
-                # Try multiple selectors for the Show All Notes button
-                selectors = [
-                    "//*[text()='Show All Notes']",
-                    "//*[contains(text(), 'Show All Notes')]",
-                    "//*[contains(text(), 'Show All')]",
-                    "//input[@value='Show All Notes']",
-                    "//button[contains(text(), 'Show All')]",
-                    "//a[contains(text(), 'Show All')]"
-                ]
-                
-                for selector in selectors:
-                    try:
-                        show_all_notes = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                        print(f"Found Show All Notes button using selector: {selector}")
-                        break
-                    except:
-                        continue
-                
-                if show_all_notes:
+                show_all_notes = driver.find_element(By.XPATH, selector)
+                print(f"Found Show All Notes button using: {selector}")
+                break
+            except NoSuchElementException:
+                continue
+
+        # Pass 2: single short wait in case the DOM isn't quite settled
+        if not show_all_notes:
+            print("Button not immediately visible, waiting up to 3s...")
+            for selector in selectors:
+                try:
+                    show_all_notes = WebDriverWait(driver, 3).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                    print(f"Found Show All Notes button (delayed) using: {selector}")
                     break
-                    
-            except Exception as e:
-                print(f"Retry {retry + 1} failed: {str(e)}")
-                if retry < max_retries - 1:
-                    time.sleep(2)  # Wait before retrying
+                except:
+                    continue
         
         if not show_all_notes:
             print("Show All Notes button not found after all attempts")
@@ -1230,22 +1202,12 @@ def process_appointment(driver, appointment, day_sheet_window):
         print(f"Encounter error: {str(encounter_error)}")
         return
 
-    # Check browser connection before window operations
-    if not check_browser_connection(driver):
-        print("❌ Browser connection lost before notes window processing")
-        return
-
     try:
         # Wait for new notes window to open
         WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
         all_notes = driver.window_handles[2]
         driver.switch_to.window(all_notes)
         print("📄 Switched to all_notes window")
-
-        # Check connection after window switch
-        if not check_browser_connection(driver):
-            print("❌ Browser connection lost after switching to notes window")
-            return
 
         # Wait for note content to load
         print("🔍 Reading patient notes...")
@@ -1308,6 +1270,8 @@ def process_appointment(driver, appointment, day_sheet_window):
     if icd9_code in icd9_substitutes:
         icd9_code = icd9_substitutes[icd9_code]
         print(f"🔄 Substituted {original_icd9} → {icd9_code}")
+
+    appointment_was_processed = True  # track successful processing
 
     if "#C" in note_content:
         appointment_length = counseling_appointment_length
@@ -1518,7 +1482,7 @@ def process_appointment(driver, appointment, day_sheet_window):
                 else:
                     print("❌ Failed to update appointment status")
                 
-                return  # Exit function for export mode
+                return True  # Exit function for export mode
                 
             else:
                 print("❌ Export failed, continuing with normal processing")
@@ -1544,6 +1508,7 @@ def process_appointment(driver, appointment, day_sheet_window):
 
     driver.switch_to.window(day_sheet_window)
     print("Switched back to day sheet window")
+    return True
 
 def process_appointments(driver, day_sheet_window):
     global cumulative_end_time
@@ -1562,6 +1527,7 @@ def process_appointments(driver, day_sheet_window):
         print(f"Found {total_appointments} appointments. Processing each one...")
     
     processed_count = 0
+    appointment_index = 0  # walks all appointments; processed_count tracks only non-skipped ones
     
     # Process each appointment, handling stale element exceptions
     while processed_count < total_appointments:
@@ -1578,27 +1544,29 @@ def process_appointments(driver, day_sheet_window):
             print(f"❌ Failed to refresh appointment list: {e}")
             break
         
-        if processed_count >= len(current_appointments):
-            # No more appointments to process
+        if appointment_index >= len(current_appointments):
+            # No more appointments on the sheet
             break
             
-        appointment = current_appointments[processed_count]
+        appointment = current_appointments[appointment_index]
         
         try:
-            print(f"\nProcessing appointment {processed_count + 1} of {total_appointments}")
+            print(f"\nChecking appointment {appointment_index + 1} (processed {processed_count} of {total_appointments})")
             
             # Switch back to day sheet window before each appointment
             driver.switch_to.window(day_sheet_window)
             
-            process_appointment(driver, appointment, day_sheet_window)
-            processed_count += 1
+            was_processed = process_appointment(driver, appointment, day_sheet_window)
+            appointment_index += 1
+            if was_processed:
+                processed_count += 1
             
         except StaleElementReferenceException:
             print("⚠️  StaleElementReferenceException caught. Refreshing appointments and retrying...")
-            # Don't increment processed_count, try the same appointment again
+            # Don't advance index, retry same appointment
             continue
         except WebDriverException as we:
-            print(f"❌ WebDriver error processing appointment {processed_count + 1}: {str(we)}")
+            print(f"❌ WebDriver error processing appointment {appointment_index + 1}: {str(we)}")
             
             # Check if it's a connection issue
             if not check_browser_connection(driver):
@@ -1606,11 +1574,13 @@ def process_appointments(driver, day_sheet_window):
                 break
             else:
                 print("🔄 Browser still connected, skipping this appointment and continuing")
+                appointment_index += 1
                 processed_count += 1
                 continue
         except Exception as e:
-            print(f"❌ Error processing appointment {processed_count + 1}: {str(e)}")
-            processed_count += 1  # Skip this appointment and continue
+            print(f"❌ Error processing appointment {appointment_index + 1}: {str(e)}")
+            appointment_index += 1
+            processed_count += 1  # Count errored appointments so runs cap still works
             continue
     
     print(f"\nCompleted processing {processed_count} appointments!")
