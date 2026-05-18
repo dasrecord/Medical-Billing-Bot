@@ -484,10 +484,10 @@ def update_appointment_status(driver, day_sheet_window, appointment_element=None
             EC.presence_of_element_located((By.NAME, "status"))
         )
         
-        # Create Select object and choose option 'B'
+        # Create Select object and choose option 'BS' (value="BS" label="Billed")
         status_select = Select(status_select_element)
-        status_select.select_by_value("B")
-        print("✅ Changed status to 'B' (Billed)")
+        status_select.select_by_value("BS")
+        print("✅ Changed status to 'BS' (Billed)")
         
         # Find and click the update button (simplified since structure is consistent)
         print("🔍 Looking for Update Appt button...")
@@ -518,14 +518,21 @@ def update_appointment_status(driver, day_sheet_window, appointment_element=None
                 print(f"❌ Button click failed: {js_error}")
                 return False
         
-        # Wait a moment for update to process
-        time.sleep(2)
-        
-        # Close the appointment window and return to day sheet
-        driver.close()
+        # onButUpdate() in the onclick handler closes the window via JS.
+        # Wait up to 5 s for it to self-close; only close manually if it doesn't.
+        try:
+            WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) == 1)
+            print("✅ Appointment window closed by EMR")
+        except Exception:
+            # Window didn't self-close — close it ourselves
+            try:
+                driver.close()
+            except Exception:
+                pass
+
         driver.switch_to.window(day_sheet_window)
         print("✅ Updated appointment status and returned to day sheet")
-        
+
         return True
         
     except Exception as e:
@@ -1470,25 +1477,17 @@ def process_appointment(driver, appointment, day_sheet_window):
                 # Wait for billing window to close, then switch back to day sheet
                 time.sleep(2)  # Give time for window to close
                 
-                # Ensure we're back on day sheet window
-                if len(driver.window_handles) > 0:
-                    # Refresh appointment element to avoid stale reference
-                    appointments = get_appointments(driver)
-                    if appointments:
-                        driver.switch_to.window(day_sheet_window)
-                        print("✅ Switched back to day sheet window")
-                        
-                        # Update appointment status - use refreshed appointment list
-                        print("🔄 Starting appointment status update...")
-                        # Find the current appointment in the refreshed list
-                        update_success = update_appointment_status(driver, day_sheet_window, appointment)
-                    
-                    if update_success:
-                        print("✅ Appointment status updated successfully")
-                    else:
-                        print("❌ Failed to update appointment status")
+                # Switch back to day sheet and update the appointment status
+                driver.switch_to.window(day_sheet_window)
+                print("✅ Switched back to day sheet window")
+
+                print("🔄 Starting appointment status update...")
+                update_success = update_appointment_status(driver, day_sheet_window, appointment)
+
+                if update_success:
+                    print("✅ Appointment status updated successfully")
                 else:
-                    print("❌ No window handles available")
+                    print("❌ Failed to update appointment status")
                 
                 return  # Exit function for export mode
                 
