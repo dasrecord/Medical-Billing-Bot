@@ -699,7 +699,7 @@ def login_to_oscar(driver):
                 
                 # Wait for login to process
                 print("⏳ Waiting for login to process...")
-                time.sleep(5)
+                WebDriverWait(driver, 10).until(lambda d: d.current_url != current_url)
                 
                 # Check if login was successful
                 new_url = driver.current_url
@@ -728,7 +728,7 @@ def login_to_oscar(driver):
                 print(f"  Navigation attempt {nav_attempt + 1}/{max_nav_attempts}...")
                 
                 driver.get(billing_date)
-                time.sleep(3)
+                time.sleep(0.5)
                 
                 final_url = driver.current_url
                 print(f"Final URL: {final_url}")
@@ -778,7 +778,7 @@ def navigate_to_billing_date(driver):
     )
     
     # Additional wait for dynamic content to load
-    time.sleep(short_delay)
+    time.sleep(0.3)
 
 def get_appointments(driver):
     # Check browser connection first
@@ -977,7 +977,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     
     # Scroll to ensure the element is visible and click using JavaScript if needed
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", e_chart)
-    time.sleep(short_delay)
+    time.sleep(0.2)
     
     print(f"🎡 Opening encounter window...")
     
@@ -995,8 +995,6 @@ def process_appointment(driver, appointment, day_sheet_window):
         print("🔄 Normal click failed, trying JavaScript click...")
         driver.execute_script("arguments[0].click();", e_chart)
         print("✅ JavaScript click successful")
-    time.sleep(long_delay)
-    
     # Check browser connection before window operations
     if not check_browser_connection(driver):
         print("❌ Browser connection lost before window switching")
@@ -1063,7 +1061,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     # Quick encounter window processing
     try:
         # Wait for encounter window to fully load
-        time.sleep(1.5)  # Reduced wait time for faster processing
+        time.sleep(0.3)  # Brief stabilization before readyState check
         
         # Wait for the page to be ready
         WebDriverWait(driver, 10).until(
@@ -1103,8 +1101,8 @@ def process_appointment(driver, appointment, day_sheet_window):
             try:
                 print(f"Attempting to find Show All Notes button (attempt {retry + 1}/{max_retries})")
                 
-                # Wait for page to stabilize
-                time.sleep(1)
+                # Brief stabilization
+                time.sleep(0.2)
                 
                 # Check connection on each retry
                 if not check_browser_connection(driver):
@@ -1181,7 +1179,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         try:
             # Scroll to button and click
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", show_all_notes)
-            time.sleep(0.5)
+            time.sleep(0.1)
             show_all_notes.click()
             print("Successfully clicked Show All Notes button")
         except Exception as click_error:
@@ -1197,9 +1195,6 @@ def process_appointment(driver, appointment, day_sheet_window):
     except Exception as encounter_error:
         print(f"Encounter error: {str(encounter_error)}")
         return
-
-    # Give time for action to process
-    time.sleep(1)
 
     # Check browser connection before window operations
     if not check_browser_connection(driver):
@@ -1318,7 +1313,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     # Scroll to ensure billing button is visible and click using JavaScript if needed
     print(f"💵 Opening billing window...")
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", billing_button)
-    time.sleep(short_delay)
+    time.sleep(0.2)
     
     try:
         # Try normal click first
@@ -1329,7 +1324,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         # If normal click fails, use JavaScript click
         print("🔄 Normal billing click failed, trying JavaScript...")
         driver.execute_script("arguments[0].click();", billing_button)
-    time.sleep(short_delay)
+    time.sleep(0.2)
     # Wait for billing window to open
     WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 1)
     
