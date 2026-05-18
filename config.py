@@ -17,12 +17,11 @@ long_delay = 3
 # Set the number of runs - default is None (process all appointments)
 runs = None 
 
-
 # set safe_mode (default = True)
 safe_mode = False
 
-# set headless mode (default = False) - MUST be False for EMR compatibility
-headless_mode = False
+# set headless mode: True = background (headless=new), False = visible window
+headless_mode = True
 
 # EXPORT MODE FLAG
 export_mode = False

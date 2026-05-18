@@ -192,23 +192,43 @@ options.add_argument("--disable-images")
 if platform.system() == "Darwin":
     options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
+# Holds the Brave subprocess started by setup_chrome_driver so it can be
+# terminated cleanly when the bot finishes (prevents orphaned processes).
+_brave_process = None
+
+
+def cleanup_brave():
+    """Terminate the bot-owned Brave subprocess if it is still running."""
+    global _brave_process
+    if _brave_process is not None:
+        try:
+            _brave_process.terminate()
+            _brave_process.wait(timeout=5)
+        except Exception:
+            try:
+                _brave_process.kill()
+            except Exception:
+                pass
+        _brave_process = None
+
+
 def setup_chrome_driver():
     """Start Brave with remote debugging and connect via regular ChromeDriver"""
-    
+    global _brave_process
+
     print("BRAVE BROWSER SETUP")
     print("=" * 50)
-    
+
     try:
-        # Step 1: Kill any existing browser processes to start fresh
-        print("Step 1: Closing any existing browsers...")
+        # Step 1: Kill only a previously bot-owned Brave instance (scoped to the
+        # bot's own user-data-dir so normal Brave windows are not affected).
+        print("Step 1: Closing any previous bot-owned browser instance...")
+        brave_clean_dir_check = os.path.join(tempfile.gettempdir(), "brave_clean")
         if sys.platform == "win32":
-            os.system("taskkill /F /IM chrome.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM brave.exe /T >nul 2>&1")
+            os.system(f'taskkill /F /FI "WINDOWTITLE eq brave_clean*" >nul 2>&1')
         else:
-            os.system("pkill -f 'Google Chrome' 2>/dev/null")
-            os.system("pkill -f 'Brave Browser' 2>/dev/null")
-            os.system("pkill -f 'chrome' 2>/dev/null")
-        time.sleep(2)
+            os.system(f"pkill -f 'user-data-dir={brave_clean_dir_check}' 2>/dev/null")
+        time.sleep(1)
         
         # Step 2: Start Brave with remote debugging (ONLY method that avoids 403)
         if sys.platform == "win32":
@@ -232,17 +252,25 @@ def setup_chrome_driver():
         brave_clean_dir = os.path.join(tempfile.gettempdir(), "brave_clean")
         if os.path.exists(brave_clean_dir):
             shutil.rmtree(brave_clean_dir, ignore_errors=True)
+        brave_clean_dir_check = brave_clean_dir  # keep name consistent
         
         # Start Brave as clean as possible - like a user opened it
         brave_args = [
             brave_path,
             "--remote-debugging-port=9222",
-            f"--user-data-dir={brave_clean_dir}"
-            # NO other flags - completely clean like manual usage
+            f"--user-data-dir={brave_clean_dir}",
+            "--window-size=1920,1080",
         ]
+
+        # Headless mode: use --headless=new (Chrome 112+) which avoids the 403
+        # detection issues caused by the old --headless flag
+        if headless_mode:
+            brave_args.append("--headless=new")
+            brave_args.append("--disable-gpu")
+            print("  (headless=new mode enabled)")
         
         try:
-            subprocess.Popen(brave_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _brave_process = subprocess.Popen(brave_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print("✓ Clean Brave instance started")
         except Exception as e:
             raise Exception(f"Failed to start Brave: {str(e)}")
@@ -1587,10 +1615,12 @@ def main():
         day_sheet_window = driver.current_window_handle
         process_appointments(driver, day_sheet_window)
         driver.quit()
+        cleanup_brave()
         ping_dasrecord("Billing bot completed successfully.")
     else:
         print("Login/setup failed - please try again")
         driver.quit()
+        cleanup_brave()
 
 if __name__ == "__main__":
     main()
