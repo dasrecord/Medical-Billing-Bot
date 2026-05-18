@@ -30,6 +30,7 @@ from openpyxl.utils import get_column_letter
 # Import configuration and ICD9 codes
 from config import *
 from icd9_codes import icd9_substitutes
+from upload import upload
 
 def debug_page_state(driver, reason="Debug"):
     """Save screenshot and page info for debugging"""
@@ -1612,9 +1613,21 @@ def main():
         
         day_sheet_window = driver.current_window_handle
         process_appointments(driver, day_sheet_window)
+
+        if upload_mode and export_mode:
+            print("\n" + "="*50)
+            print("UPLOAD MODE - Uploading export")
+            print("="*50)
+            upload_success = upload(driver)
+            if upload_success:
+                ping_dasrecord("Billing bot completed successfully. Export uploaded to dr-bill.ca.")
+            else:
+                ping_dasrecord("Billing bot completed. ⚠️ Upload to dr-bill.ca failed — please upload manually.")
+        else:
+            ping_dasrecord("Billing bot completed successfully.")
+
         driver.quit()
         cleanup_brave()
-        ping_dasrecord("Billing bot completed successfully.")
     else:
         print("Login/setup failed - please try again")
         driver.quit()

@@ -26,3 +26,5 @@ headless_mode = False
 # EXPORT MODE FLAG
 export_mode = True
 
+# UPLOAD MODE FLAG
+upload_mode = True
