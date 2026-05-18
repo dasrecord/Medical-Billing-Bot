@@ -484,10 +484,10 @@ def update_appointment_status(driver, day_sheet_window, appointment_element=None
             EC.presence_of_element_located((By.NAME, "status"))
         )
         
-        # Create Select object and choose option 'BS' (value="BS" label="Billed")
+        # Create Select object and choose option 'B' (value="B" label="Billed")
         status_select = Select(status_select_element)
-        status_select.select_by_value("BS")
-        print("✅ Changed status to 'BS' (Billed)")
+        status_select.select_by_value("B")
+        print("✅ Changed status to 'B' (Billed)")
         
         # Find and click the update button (simplified since structure is consistent)
         print("🔍 Looking for Update Appt button...")
@@ -806,9 +806,28 @@ def extract_patient_info(driver):
     try:
         print("🔍 Extracting patient information from billing form table structure...")
         
-        # Find the Patient Information table (first table with "Patient Information" header)
-        patient_table_xpath = "//td[contains(text(), 'Patient Information')]/ancestor::table[1]"
-        patient_table = driver.find_element(By.XPATH, patient_table_xpath)
+        # Find the Patient Information table using multiple fallback strategies
+        patient_table = None
+        patient_table_strategies = [
+            # td with direct text
+            "//td[contains(text(), 'Patient Information')]/ancestor::table[1]",
+            # th with direct text
+            "//th[contains(text(), 'Patient Information')]/ancestor::table[1]",
+            # any element with nested text (e.g. <td><b>Patient Information</b></td>)
+            "//*[contains(., 'Patient Information')][self::td or self::th]/ancestor::table[1]",
+            # normalize-space to handle extra whitespace
+            "//td[contains(normalize-space(.), 'Patient Information')]/ancestor::table[1]",
+            "//th[contains(normalize-space(.), 'Patient Information')]/ancestor::table[1]",
+        ]
+        for strategy in patient_table_strategies:
+            try:
+                patient_table = driver.find_element(By.XPATH, strategy)
+                print(f"✅ Found patient table using: {strategy}")
+                break
+            except NoSuchElementException:
+                continue
+        if patient_table is None:
+            raise NoSuchElementException("Could not locate Patient Information table with any known selector")
         
         # Extract Patient Name (2nd cell, 1st data row) - Format: "LASTNAME,FIRSTNAME"
         try:
@@ -875,9 +894,24 @@ def extract_patient_info(driver):
         
         # Extract billing/service code from the service table
         try:
-            # Find the service code table (contains "Service Code" header)
-            service_table_xpath = "//td[contains(text(), 'Service Code')]/ancestor::table[1]"
-            service_table = driver.find_element(By.XPATH, service_table_xpath)
+            # Find the service code table using multiple fallback strategies
+            service_table = None
+            service_table_strategies = [
+                "//td[contains(text(), 'Service Code')]/ancestor::table[1]",
+                "//th[contains(text(), 'Service Code')]/ancestor::table[1]",
+                "//*[contains(., 'Service Code')][self::td or self::th]/ancestor::table[1]",
+                "//td[contains(normalize-space(.), 'Service Code')]/ancestor::table[1]",
+                "//th[contains(normalize-space(.), 'Service Code')]/ancestor::table[1]",
+            ]
+            for strategy in service_table_strategies:
+                try:
+                    service_table = driver.find_element(By.XPATH, strategy)
+                    print(f"✅ Found service table using: {strategy}")
+                    break
+                except NoSuchElementException:
+                    continue
+            if service_table is None:
+                raise NoSuchElementException("Could not locate Service Code table with any known selector")
             
             # Get the service code from first data row, first cell
             service_code_xpath = ".//tr[2]/td[1]"  # First data row, first cell

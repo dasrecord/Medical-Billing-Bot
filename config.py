@@ -15,13 +15,14 @@ short_delay = 1
 long_delay = 3
 
 # Set the number of runs - default is None (process all appointments)
-runs = None 
+runs = 1 
 
 # set safe_mode (default = True)
 safe_mode = False
 
 # set headless mode: True = background (headless=new), False = visible window
-headless_mode = True
+headless_mode = False
 
 # EXPORT MODE FLAG
-export_mode = False
+export_mode = True
+
