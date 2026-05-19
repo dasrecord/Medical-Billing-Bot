@@ -1089,6 +1089,7 @@ def process_appointment(driver, appointment, day_sheet_window):
     print(f"Switched to encounter window: {driver.current_url}")
 
     # Quick encounter window processing
+    _t0 = time.time()
     try:
         # Debug: Print page information
         print(f"Encounter window URL: {driver.current_url}")
@@ -1101,12 +1102,19 @@ def process_appointment(driver, appointment, day_sheet_window):
             debug_page_state(driver, "wrong_window_detected")
             return
         
+        # Disable implicit wait so find_element/find_elements return immediately on miss
+        # (implicit_wait=10 would burn 10s per failed selector otherwise)
+        driver.implicitly_wait(0)
+        _t1 = time.time(); print(f"[TIMING] encounter window ready: {_t1 - _t0:.2f}s")
+
         # Check for iframes that might contain the notes
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        _t2 = time.time(); print(f"[TIMING] iframe scan ({len(iframes)} found): {_t2 - _t1:.2f}s")
         print(f"Found {len(iframes)} iframes in encounter window")
         
         # Quick 403 check
         if "403" in driver.page_source[:300] or "Forbidden" in driver.page_source[:300]:
+            driver.implicitly_wait(10)
             print("403 error detected")
             return
         
@@ -1122,6 +1130,7 @@ def process_appointment(driver, appointment, day_sheet_window):
         ]
 
         # Pass 1: instant find_element (page is already loaded)
+        _t3 = time.time()
         for selector in selectors:
             try:
                 show_all_notes = driver.find_element(By.XPATH, selector)
@@ -1129,10 +1138,12 @@ def process_appointment(driver, appointment, day_sheet_window):
                 break
             except NoSuchElementException:
                 continue
+        print(f"[TIMING] Pass 1 button search: {time.time() - _t3:.2f}s")
 
         # Pass 2: single short wait in case the DOM isn't quite settled
         if not show_all_notes:
             print("Button not immediately visible, waiting up to 3s...")
+            _t4 = time.time()
             for selector in selectors:
                 try:
                     show_all_notes = WebDriverWait(driver, 3).until(
@@ -1142,6 +1153,7 @@ def process_appointment(driver, appointment, day_sheet_window):
                     break
                 except:
                     continue
+            print(f"[TIMING] Pass 2 button search: {time.time() - _t4:.2f}s")
         
         if not show_all_notes:
             print("Show All Notes button not found after all attempts")
@@ -1181,12 +1193,17 @@ def process_appointment(driver, appointment, day_sheet_window):
                     debug_page_state(driver, "no_notes_button_found")
                     return
         
+        # Restore implicit wait before clicking (needed for subsequent find_element calls)
+        driver.implicitly_wait(10)
+
         # Click the button
+        _t_click = time.time()
         try:
             # Scroll to button and click
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", show_all_notes)
             time.sleep(0.1)
             show_all_notes.click()
+            print(f"[TIMING] click Show All Notes: {time.time() - _t_click:.2f}s")
             print("Successfully clicked Show All Notes button")
         except Exception as click_error:
             print(f"Failed to click Show All Notes button: {click_error}")
@@ -1203,17 +1220,21 @@ def process_appointment(driver, appointment, day_sheet_window):
         return
 
     try:
-        # Wait for new notes window to open
-        WebDriverWait(driver, long_delay).until(lambda d: len(d.window_handles) > 2)
+        # Wait for new notes window to open (use a longer timeout — server can be slow)
+        _t_win = time.time()
+        WebDriverWait(driver, max(long_delay, 10)).until(lambda d: len(d.window_handles) > 2)
+        print(f"[TIMING] notes window opened: {time.time() - _t_win:.2f}s")
         all_notes = driver.window_handles[2]
         driver.switch_to.window(all_notes)
         print("📄 Switched to all_notes window")
 
         # Wait for note content to load
         print("🔍 Reading patient notes...")
+        _t_content = time.time()
         note_to_bill = WebDriverWait(driver, long_delay).until(
             EC.presence_of_element_located((By.XPATH, "/html/body/div[last()]"))
         )
+        print(f"[TIMING] note content loaded: {time.time() - _t_content:.2f}s")
         note_content = note_to_bill.text
     except Exception as notes_error:
         print(f"❌ Error accessing notes window: {notes_error}")
@@ -1612,9 +1633,21 @@ def main():
         
         day_sheet_window = driver.current_window_handle
         process_appointments(driver, day_sheet_window)
+
+        if upload_mode and export_mode:
+            print("\n" + "="*50)
+            print("UPLOAD MODE - Uploading export")
+            print("="*50)
+            upload_success = upload(driver)
+            if upload_success:
+                ping_dasrecord("Billing bot completed successfully. Export uploaded to dr-bill.ca.")
+            else:
+                ping_dasrecord("Billing bot completed. ⚠️ Upload to dr-bill.ca failed — please upload manually.")
+        else:
+            ping_dasrecord("Billing bot completed successfully.")
+
         driver.quit()
         cleanup_brave()
-        ping_dasrecord("Billing bot completed successfully.")
     else:
         print("Login/setup failed - please try again")
         driver.quit()
