@@ -21,8 +21,10 @@ runs = None
 safe_mode = False
 
 # set headless mode: True = background (headless=new), False = visible window
-headless_mode = False
+headless_mode = True
 
 # EXPORT MODE FLAG
 export_mode = False
 
+# UPLOAD MODE FLAG
+upload_mode = False

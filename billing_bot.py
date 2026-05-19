@@ -30,6 +30,7 @@ from openpyxl.utils import get_column_letter
 # Import configuration and ICD9 codes
 from config import *
 from icd9_codes import icd9_substitutes
+from upload import upload
 
 def debug_page_state(driver, reason="Debug"):
     """Save screenshot and page info for debugging"""
