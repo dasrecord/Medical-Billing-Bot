@@ -249,6 +249,14 @@ def upload(driver, xlsx_path=None):
 
         time.sleep(2)
         print(f"✅ Upload complete: {os.path.basename(xlsx_path)}")
+
+        # Move the uploaded file to the archives folder
+        archives_dir = os.path.join(os.path.dirname(xlsx_path), "archives")
+        os.makedirs(archives_dir, exist_ok=True)
+        dest = os.path.join(archives_dir, os.path.basename(xlsx_path))
+        shutil.move(xlsx_path, dest)
+        print(f"📦 Moved to archives: {dest}")
+
         return True
 
     except Exception as e:
