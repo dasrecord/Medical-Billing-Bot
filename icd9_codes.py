@@ -31,7 +31,9 @@ icd9_substitutes = {
     "7000":"700",
     "72885":"728",
     "3273":"3074",
-    "2141":"215"
+    "2141":"215",
+    "56211":"5621",
+    "6702":"670",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }

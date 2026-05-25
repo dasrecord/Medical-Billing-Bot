@@ -139,7 +139,10 @@ def upload(driver, xlsx_path=None):
         if not xlsx_files:
             print("❌ No .xlsx files found to upload")
             return False
+        #newest_file
         xlsx_path = os.path.abspath(max(xlsx_files, key=os.path.getmtime))
+        #oldest_file
+        #xlsx_path = os.path.abspath(min(xlsx_files, key=os.path.getmtime))
 
     xlsx_path = os.path.abspath(xlsx_path)
     if not os.path.exists(xlsx_path):
