@@ -30,7 +30,7 @@ from openpyxl.utils import get_column_letter
 # Import configuration and ICD9 codes
 from config import *
 from icd9_codes import icd9_substitutes
-from upload import upload
+from upload import upload, setup_driver as upload_setup_driver, cleanup_brave as upload_cleanup_brave
 
 def debug_page_state(driver, reason="Debug"):
     """Save screenshot and page info for debugging"""
@@ -1639,7 +1639,15 @@ def main():
             print("\n" + "="*50)
             print("UPLOAD MODE - Uploading export")
             print("="*50)
-            upload_success = upload(driver)
+            upload_driver = upload_setup_driver(headless=False)
+            try:
+                upload_success = upload(upload_driver)
+            finally:
+                try:
+                    upload_driver.quit()
+                except Exception:
+                    pass
+                upload_cleanup_brave()
             if upload_success:
                 ping_dasrecord("Billing bot completed successfully. Export uploaded to dr-bill.ca.")
             else:

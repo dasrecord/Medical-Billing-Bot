@@ -2,7 +2,8 @@ import datetime
 # Set the billing date
 billing_year = str(datetime.date.today().year)
 billing_month = str(datetime.date.today().month)
-billing_day = str(datetime.date.today().day)
+# billing_day = str(datetime.date.today().day)
+billing_day = '21'  # Set to the first day of the month for billing purposes
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -24,7 +25,7 @@ safe_mode = False
 headless_mode = True
 
 # EXPORT MODE FLAG
-export_mode = False
+export_mode = True
 
 # UPLOAD MODE FLAG
-upload_mode = False
+upload_mode = True
