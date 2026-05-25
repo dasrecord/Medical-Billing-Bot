@@ -1609,6 +1609,13 @@ def process_appointments(driver, day_sheet_window):
     if counseling_appointment_count > 0:
         print(f"Counseling appointments processed: {counseling_appointment_count}")
 
+    return {
+        "total_found": len(appointments),
+        "processed": processed_count,
+        "skipped": appointment_index - processed_count,
+        "counseling": counseling_appointment_count,
+    }
+
 def main():
     # Set up the driver
     driver = setup_chrome_driver()
@@ -1633,7 +1640,7 @@ def main():
         print("="*50)
         
         day_sheet_window = driver.current_window_handle
-        process_appointments(driver, day_sheet_window)
+        run_stats = process_appointments(driver, day_sheet_window)
 
         if upload_mode and export_mode:
             print("\n" + "="*50)
@@ -1648,12 +1655,16 @@ def main():
                 except Exception:
                     pass
                 upload_cleanup_brave()
+            stats_msg = (f"Processed: {run_stats['processed']} | Skipped: {run_stats['skipped']}"
+                         + (f" | Counseling: {run_stats['counseling']}" if run_stats['counseling'] else ""))
             if upload_success:
-                ping_dasrecord("Billing bot completed successfully. Export uploaded to dr-bill.ca.")
+                ping_dasrecord(f"Billing bot completed successfully. Export uploaded. {stats_msg}")
             else:
-                ping_dasrecord("Billing bot completed. ⚠️ Upload to dr-bill.ca failed — please upload manually.")
+                ping_dasrecord(f"Billing bot completed. ⚠️ Upload failed — please upload manually. {stats_msg}")
         else:
-            ping_dasrecord("Billing bot completed successfully.")
+            stats_msg = (f"Processed: {run_stats['processed']} | Skipped: {run_stats['skipped']}"
+                         + (f" | Counseling: {run_stats['counseling']}" if run_stats['counseling'] else ""))
+            ping_dasrecord(f"Billing bot completed. {stats_msg}")
 
         driver.quit()
         cleanup_brave()
