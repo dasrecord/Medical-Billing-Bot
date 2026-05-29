@@ -27,6 +27,25 @@ import json
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
+
+def _detect_brave_version():
+    """Return the installed Brave version string, or None."""
+    import subprocess, sys
+    candidates = (
+        ["/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"]
+        if sys.platform != "win32" else []
+    )
+    for p in candidates:
+        if __import__("os").path.exists(p):
+            try:
+                out = subprocess.check_output([p, "--version"], stderr=subprocess.DEVNULL, text=True)
+                parts = out.strip().split()
+                return parts[-1].split(".")[0] if parts else None
+            except Exception:
+                return None
+    return None
+
+
 # Import configuration and ICD9 codes
 from config import *
 from icd9_codes import icd9_substitutes
@@ -308,7 +327,9 @@ def setup_chrome_driver():
         chrome_options.add_argument("--disable-extensions")
         
         # Get ChromeDriver path
-        driver_path = ChromeDriverManager().install()
+        brave_ver   = _detect_brave_version()
+        mgr_kwargs  = {"driver_version": brave_ver} if brave_ver else {}
+        driver_path = ChromeDriverManager(**mgr_kwargs).install()
         
         if "THIRD_PARTY_NOTICES" in driver_path:
             driver_dir = os.path.dirname(driver_path)

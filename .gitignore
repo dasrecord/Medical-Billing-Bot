@@ -2,3 +2,6 @@
 *.log
 *.xlsx
 *.csv
+.venv/
+__pycache__/
+*.pyc

@@ -1,9 +1,10 @@
 import datetime
-# Set the billing date
-billing_year = str(datetime.date.today().year)
-billing_month = str(datetime.date.today().month)
-# billing_day = str(datetime.date.today().day)
-billing_day = '21'  # Set to the first day of the month for billing purposes
+import os
+
+# Set the billing date (env vars override hardcoded values)
+billing_year  = os.environ.get("BILLING_DATE_YEAR",  str(datetime.date.today().year))
+billing_month = os.environ.get("BILLING_DATE_MONTH", str(datetime.date.today().month))
+billing_day   = os.environ.get("BILLING_DATE_DAY",   str(datetime.date.today().day))
 
 # standard_appointment_length is 5 minutes
 standard_appointment_length = 5
@@ -16,16 +17,17 @@ short_delay = 1
 long_delay = 3
 
 # Set the number of runs - default is None (process all appointments)
-runs = None
+_runs_env = os.environ.get("BILLING_RUNS")
+runs = int(_runs_env) if _runs_env and _runs_env.isdigit() else None
 
-# set safe_mode (default = True)
-safe_mode = False
+# set safe_mode — env var "1"/"true" overrides
+safe_mode = os.environ.get("BILLING_SAFE_MODE", "0").lower() in ("1", "true")
 
 # set headless mode: True = background (headless=new), False = visible window
-headless_mode = True
+headless_mode = os.environ.get("BILLING_HEADLESS", "1").lower() not in ("0", "false")
 
 # EXPORT MODE FLAG
-export_mode = True
+export_mode = os.environ.get("BILLING_EXPORT_MODE", "1").lower() not in ("0", "false")
 
 # UPLOAD MODE FLAG
-upload_mode = True
+upload_mode = os.environ.get("BILLING_UPLOAD_MODE", "1").lower() not in ("0", "false")
