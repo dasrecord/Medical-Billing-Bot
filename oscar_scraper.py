@@ -349,15 +349,39 @@ def scrape_day_sheet(driver, date_obj):
             except Exception:
                 start_time = None
 
-            # --- Patient name ---
-            # Strip known button labels from the appointment text to isolate the name.
-            raw_text = appt.text or ""
-            lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
-            name_parts = [
-                ln for ln in lines
-                if ln not in _STRIP_LABELS and not ln.startswith("Track")
-            ]
-            patient_name_raw = " ".join(name_parts).strip()
+            # --- Patient name + appointment URL ---
+            appointment_url = None
+            patient_name_raw = ""
+            try:
+                appt_link = appt.find_element(By.CSS_SELECTOR, "a.apptLink")
+                patient_name_raw = appt_link.text.strip()
+            except Exception:
+                # Fallback: use full appt text, strip known button labels
+                raw_text = appt.text or ""
+                lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+                name_parts = [
+                    ln for ln in lines
+                    if ln not in _STRIP_LABELS and not ln.startswith("Track")
+                ]
+                patient_name_raw = " ".join(name_parts).strip()
+
+            # Encounter link opens via onclick popup — extract URL from it
+            try:
+                enc_link = appt.find_element(By.XPATH, ".//a[contains(@title, 'Encounter')]")
+                onclick = enc_link.get_attribute("onclick") or ""
+                import re as _re
+                from urllib.parse import urlparse, urljoin
+                url_match = _re.search(
+                    r"['\"]([^'\"]*(?:oscarEncounter|echart|encounter)[^'\"]*)['\"]",
+                    onclick, _re.IGNORECASE
+                )
+                if url_match:
+                    path = url_match.group(1)
+                    # Resolve relative to the day-sheet page URL
+                    day_url = _oscar_day_url(date_obj)
+                    appointment_url = urljoin(day_url, path)
+            except Exception:
+                pass
 
             if "," in patient_name_raw:
                 last_raw, first_raw = patient_name_raw.split(",", 1)
@@ -366,16 +390,6 @@ def scrape_day_sheet(driver, date_obj):
             else:
                 last_name  = patient_name_raw.title()
                 first_name = ""
-
-            # --- Oscar deep-link (Master Record href) ---
-            appointment_url = None
-            try:
-                mr_link = appt.find_element(
-                    By.XPATH, ".//a[contains(@title, 'Master Record')]"
-                )
-                appointment_url = mr_link.get_attribute("href")
-            except Exception:
-                pass
 
             results.append(
                 {
