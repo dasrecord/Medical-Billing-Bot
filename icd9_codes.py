@@ -34,6 +34,8 @@ icd9_substitutes = {
     "2141":"215",
     "56211":"5621",
     "6702":"670",
+    "7020":"702",
+    "70403":"704",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }

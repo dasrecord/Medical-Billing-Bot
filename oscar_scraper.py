@@ -37,21 +37,29 @@ BRAVE_VERSION = os.environ.get("BRAVE_VERSION")   # override e.g. "148.0.7778.17
 
 
 def _detect_brave_version():
-    """Return the major.minor version string for the installed Brave, or None."""
-    brave_bin = None
-    for p in ("/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"):
+    """Return the installed Brave major version string (e.g. '148'), or None."""
+    if sys.platform == "darwin":
+        candidates = [
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            os.path.expanduser("~/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+        ]
+    elif sys.platform == "win32":
+        candidates = [
+            r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+            r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        ]
+    else:
+        candidates = ["/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"]
+    for p in candidates:
         if os.path.exists(p):
-            brave_bin = p
-            break
-    if not brave_bin:
-        return None
-    try:
-        out = subprocess.check_output([brave_bin, "--version"], stderr=subprocess.DEVNULL, text=True)
-        # e.g. "Brave Browser 148.0.7778.179" → "148"
-        parts = out.strip().split()
-        return parts[-1].split(".")[0] if parts else None
-    except Exception:
-        return None
+            try:
+                out = subprocess.check_output([p, "--version"], stderr=subprocess.DEVNULL, text=True)
+                # e.g. "Brave Browser 148.0.7778.217" → "148"
+                parts = out.strip().split()
+                return parts[-1].split(".")[0] if parts else None
+            except Exception:
+                continue
+    return None
 
 # Port 9224 is dedicated to the scraper so it does not clash with:
 #   9222 — billing_bot.py

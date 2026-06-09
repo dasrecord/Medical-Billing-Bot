@@ -29,20 +29,29 @@ from openpyxl.utils import get_column_letter
 
 
 def _detect_brave_version():
-    """Return the installed Brave version string, or None."""
-    import subprocess, sys
-    candidates = (
-        ["/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"]
-        if sys.platform != "win32" else []
-    )
+    """Return the installed Brave major version string (e.g. '148'), or None."""
+    import subprocess, sys, os
+    if sys.platform == "darwin":
+        candidates = [
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            os.path.expanduser("~/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+        ]
+    elif sys.platform == "win32":
+        candidates = [
+            r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+            r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        ]
+    else:
+        candidates = ["/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"]
     for p in candidates:
-        if __import__("os").path.exists(p):
+        if os.path.exists(p):
             try:
                 out = subprocess.check_output([p, "--version"], stderr=subprocess.DEVNULL, text=True)
+                # e.g. "Brave Browser 148.0.7778.217" → "148"
                 parts = out.strip().split()
                 return parts[-1].split(".")[0] if parts else None
             except Exception:
-                return None
+                continue
     return None
 
 
