@@ -30,24 +30,38 @@ from openpyxl.utils import get_column_letter
 
 def _detect_brave_version():
     """Return the installed Brave major version string (e.g. '148'), or None."""
-    import subprocess, sys, os
+    import sys, os
     if sys.platform == "darwin":
-        candidates = [
-            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-            os.path.expanduser("~/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+        # Read version from Info.plist — instant, no process launch needed
+        import plistlib
+        plist_candidates = [
+            "/Applications/Brave Browser.app/Contents/Info.plist",
+            os.path.expanduser("~/Applications/Brave Browser.app/Contents/Info.plist"),
         ]
+        for plist_path in plist_candidates:
+            if os.path.exists(plist_path):
+                try:
+                    with open(plist_path, "rb") as f:
+                        plist = plistlib.load(f)
+                    # KSVersion = "148.0.7778.217"; fallback to CFBundleShortVersionString
+                    version = plist.get("KSVersion") or plist.get("CFBundleShortVersionString", "")
+                    return version.split(".")[0] if version else None
+                except Exception:
+                    continue
+        return None
     elif sys.platform == "win32":
+        import subprocess
         candidates = [
             r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
             r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
         ]
     else:
+        import subprocess
         candidates = ["/usr/bin/brave-browser", "/usr/bin/brave", "/snap/bin/brave"]
     for p in candidates:
         if os.path.exists(p):
             try:
                 out = subprocess.check_output([p, "--version"], stderr=subprocess.DEVNULL, text=True)
-                # e.g. "Brave Browser 148.0.7778.217" → "148"
                 parts = out.strip().split()
                 return parts[-1].split(".")[0] if parts else None
             except Exception:
@@ -837,6 +851,10 @@ def extract_patient_info(driver):
     try:
         print("🔍 Extracting patient information from billing form table structure...")
         
+        # Disable implicit wait so each failing XPath returns instantly instead
+        # of burning the full 10-second timeout per strategy (5 strategies × 10s = 50s wasted)
+        driver.implicitly_wait(0)
+        
         # Find the Patient Information table using multiple fallback strategies
         patient_table = None
         patient_table_strategies = [
@@ -858,6 +876,8 @@ def extract_patient_info(driver):
             except NoSuchElementException:
                 continue
         if patient_table is None:
+            # Save a debug screenshot so we can see what this patient's page looks like
+            safe_screenshot(driver, f"debug_patient_table_missing_{int(time.time())}.png")
             raise NoSuchElementException("Could not locate Patient Information table with any known selector")
         
         # Extract Patient Name (2nd cell, 1st data row) - Format: "LASTNAME,FIRSTNAME"
@@ -967,6 +987,9 @@ def extract_patient_info(driver):
             "province": "BC",
             "billing_code": "A001A"  # Fallback default
         }
+    finally:
+        # Always restore implicit wait so the rest of the bot behaves normally
+        driver.implicitly_wait(10)
 
 def format_date(date_str):
     """Convert date to YYYY-MM-DD format"""
@@ -1262,11 +1285,26 @@ def process_appointment(driver, appointment, day_sheet_window):
         # Wait for note content to load
         print("🔍 Reading patient notes...")
         _t_content = time.time()
-        note_to_bill = WebDriverWait(driver, long_delay).until(
+        WebDriverWait(driver, long_delay).until(
             EC.presence_of_element_located((By.XPATH, "/html/body/div[last()]"))
         )
         print(f"[TIMING] note content loaded: {time.time() - _t_content:.2f}s")
-        note_content = note_to_bill.text
+
+        # Find the most recent note that contains a SOAP structure (A: and P:).
+        # Virtual care platforms sometimes insert a system/summary entry as the very
+        # last div, pushing the actual SOAP note to 2nd or 3rd last position.
+        all_note_divs = driver.find_elements(By.XPATH, "/html/body/div")
+        note_content = ""
+        for div in reversed(all_note_divs[-5:]):  # check up to last 5, most-recent first
+            candidate = div.text
+            if "A:" in candidate and "P:" in candidate:
+                note_content = candidate
+                print(f"✅ Found SOAP note (div {all_note_divs.index(div) + 1} of {len(all_note_divs)})")
+                break
+        if not note_content:
+            # Fallback: just use the last div as before
+            note_content = all_note_divs[-1].text if all_note_divs else ""
+            print("⚠️  No SOAP-structured note found in last 5 entries — using last div as fallback")
     except Exception as notes_error:
         print(f"❌ Error accessing notes window: {notes_error}")
         # Try to recover by going back to day sheet
@@ -1482,6 +1520,16 @@ def process_appointment(driver, appointment, day_sheet_window):
             WebDriverWait(driver, 10).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
+
+            # Check for Oscar validation errors (e.g. "Diagnostic code: XXXX doesn't exist")
+            # before attempting export/status update — don't mark as Billed if the bill was rejected
+            page_source_full = driver.page_source
+            if "Validation Error" in page_source_full or "doesn't exist in database" in page_source_full:
+                print("⚠️  Oscar validation error detected — ICD9 code rejected.")
+                icd9_logger.info(f"Failed ICD9 code: {icd9_code} - Diagnosis: {diagnosis.strip()} (validation error on confirmation page)")
+                print("❌ Appointment will NOT be marked as Billed.")
+                driver.switch_to.window(day_sheet_window)
+                return False
             
             # Extract patient information from the final billing confirmation page
             patient_data = extract_patient_info(driver)
