@@ -37,7 +37,13 @@ icd9_substitutes = {
     "7020":"702",
     "4621":"462",
     "4810":"486",
-    "6501":"V242"
+    "6501":"V242",
+    "30002":"300",
+    "49392":"493",
+    "2963":"296",
+    "00859":"0091",
+    "6866":"686",
+    "49391":"493",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
