@@ -52,6 +52,9 @@ icd9_substitutes = {
     "3110":"311",
     "5990":"599",
     "5906":"590",
+    "3392":"339",
+    "49121":"491",
+    "3392":"346",
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
