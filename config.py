@@ -35,5 +35,5 @@ runs = _env_int("BILLING_RUNS")
 # Behaviour flags
 safe_mode     = _env_bool("BILLING_SAFE_MODE",   False)
 headless_mode = _env_bool("BILLING_HEADLESS",    True)
-export_mode   = _env_bool("BILLING_EXPORT_MODE", False)
+export_mode   = _env_bool("BILLING_EXPORT_MODE", True)
 upload_mode   = _env_bool("BILLING_UPLOAD_MODE", False)
