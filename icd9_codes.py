@@ -1,5 +1,8 @@
 # ICD9 Code Substitution Dictionary
 # Maps invalid codes to valid substitute codes
+import re
+
+
 icd9_substitutes = {
     "V586":"V68",
     "V5869":"V68",
@@ -55,6 +58,13 @@ icd9_substitutes = {
     "3392":"339",
     "49121":"491",
     "3392":"346",
+    "2800":"280",
+    "0794":"079",
+    "70403":"704",
+    "1163":"116",
+    "71540":"715",
+    "4359":"435",
+    "7045":"704"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }

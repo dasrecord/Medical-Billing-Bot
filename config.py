@@ -19,6 +19,7 @@ _today = datetime.date.today()
 billing_year  = os.environ.get("BILLING_DATE_YEAR",  str(_today.year))
 billing_month = os.environ.get("BILLING_DATE_MONTH", str(_today.month))
 billing_day   = os.environ.get("BILLING_DATE_DAY",   str(_today.day))
+# billing_day = '##'
 
 # Appointment durations (minutes)
 standard_appointment_length  = 5
