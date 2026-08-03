@@ -67,7 +67,11 @@ icd9_substitutes = {
     "7045":"704",
     "60784":"6078",
     "3002": "300",
-    "3039":"303"
+    "3039":"303",
+    "5975":"597",
+    "43884":"438",
+    "3801":"380",
+    "03411":"034"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
