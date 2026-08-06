@@ -2,7 +2,6 @@
 # Maps invalid codes to valid substitute codes
 import re
 
-
 icd9_substitutes = {
     "V586":"V68",
     "V5869":"V68",
@@ -71,7 +70,11 @@ icd9_substitutes = {
     "5975":"597",
     "43884":"438",
     "3801":"380",
-    "03411":"034"
+    "03411":"034",
+    "61172":"6117",
+    "6865":"686",
+    "49392":"493",
+    "0519":"051"
     # Add more substitutions as needed based on failed_icd9_codes.log
     # Format: "invalid_code": "valid_substitute"
 }
